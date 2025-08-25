@@ -33,18 +33,18 @@ from PySide6.QtGui import QPixmap, QPainter, QPen, QColor, QMouseEvent
 from PySide6.QtCore import Qt, QRect
 
 
-LAUNCHER_VERSION = "1.0" 
-GITHUB_API_RELEASES = "https://api.github.com/repos/LunarMoonDLCT/GXCLauncher/releases/latest"
+LAUNCHER_VERSION = "1.0.0"
+GITHUB_API_RELEASES = "https://api.github.com/repos/LunarMoonDLCT/MaZult-Launcher/releases/latest"
 
 def get_appdata_path():
     if sys.platform.startswith('win32'):
-        return Path(os.getenv("APPDATA")) / ".gxclauncher"
+        return Path(os.getenv("APPDATA")) / ".MaZultLauncher"
     elif sys.platform.startswith('linux'):
-        return Path.home() / ".gxclauncher"
+        return Path.home() / ".MaZultLauncher"
     elif sys.platform.startswith('darwin'):
-        return Path.home() / "Library" / "Application Support" / ".gxclauncher"
+        return Path.home() / "Library" / "Application Support" / ".MaZultLauncher"
     else:
-        return Path.home() / ".gxclauncher"
+        return Path.home() / ".MaZultLauncher"
 
 def resource_path(relative_path):
     base_path = getattr(sys, '_MEIPASS', os.path.dirname(__file__))
@@ -240,9 +240,9 @@ class SettingsDialog(QDialog):
         ram_groupbox = QGroupBox("RAM Allocation")
         ram_layout = QVBoxLayout()
         self.ram_slider = QSlider(Qt.Horizontal)
-        self.ram_slider.setMinimum(520)  
+        self.ram_slider.setMinimum(520)
         self.ram_slider.setMaximum(psutil.virtual_memory().total // (1024 * 1024) - 512)
-        self.ram_slider.setSingleStep(520)  
+        self.ram_slider.setSingleStep(520)
         ram_mb = settings.get("ram_mb", 2048)
         self.ram_slider.setValue(ram_mb)
         self.ram_label = QLabel()
@@ -520,7 +520,7 @@ class MinecraftThread(QThread):
         
         self.finished_signal.emit()
 
-class GXClauncher(QWidget):
+class MaZultLauncher(QWidget):
     def closeEvent(self, event):
         if self.dev_console.isVisible():
             self.dev_console.close()
@@ -716,7 +716,7 @@ class GXClauncher(QWidget):
         if load_settings().get("dev_console", False):
             self.dev_console.show()
 
-        self.setWindowTitle("GXCLauncher")
+        self.setWindowTitle(f"MaZult Launcher {LAUNCHER_VERSION}")
         self.setWindowIcon(QIcon(str(self.icon_path)))
         self.setMinimumSize(900, 520)
         self.setStyleSheet(self.load_styles())
@@ -754,7 +754,7 @@ class GXClauncher(QWidget):
         content_layout.setContentsMargins(20, 20, 20, 20)
         
         header_layout = QHBoxLayout()
-        title = QLabel("GXCLauncher")
+        title = QLabel("MaZult Launcher")
         title.setFont(QFont("Segoe UI", 24, QFont.Bold))
         refresh_button = QPushButton("↻")
         refresh_button.setFixedSize(30, 30)
@@ -1104,7 +1104,7 @@ class SplashScreen(QSplashScreen):
         painter.setPen(QColor(255, 255, 255))
         title_font = QFont("Segoe UI", 24, QFont.Bold)
         painter.setFont(title_font)
-        painter.drawText(rect, Qt.AlignHCenter | Qt.AlignTop, "GXCLauncher")
+        painter.drawText(rect, Qt.AlignHCenter | Qt.AlignTop, "MaZult Launcher")
 
         painter.setPen(QColor(200, 200, 200))
         text_font = QFont("Segoe UI", 10)
@@ -1153,7 +1153,7 @@ class UpdateThread(QThread):
                     if sys.platform.startswith('win32') and asset['name'].endswith('-Win.zip'):
                         asset_url = asset['browser_download_url']
                         break
-                    elif (sys.platform.startswith('linux') or sys.platform.startswith('darwin')) and asset['name'].endswith('-Universe.zip'):
+                    elif (sys.platform.startswith('linux') or sys.platform.startswith('darwin')) and asset['name'].endswith('-Universal.zip'):
                         asset_url = asset['browser_download_url']
                         break
                 
@@ -1232,7 +1232,7 @@ if __name__ == "__main__":
         else:
             current_dir = Path(os.path.dirname(os.path.abspath(__file__)))
             
-        zip_path = current_dir / f"GXCLauncher-{version}.zip"
+        zip_path = current_dir / f"MaZulLauncher-{version}.zip"
 
         splash.set_loading_progress(20, "Downloading update...")
         app.processEvents()
@@ -1314,7 +1314,7 @@ if __name__ == "__main__":
         global window
         splash.set_loading_progress(100, "Done.")
         app.processEvents()
-        window = GXClauncher()
+        window = MaZultLauncher()
         window.show()
         splash.finish(window)
 
