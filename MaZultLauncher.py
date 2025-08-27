@@ -171,10 +171,17 @@ class UpdateWorker(QThread):
                 shutil.move(s, d)
 
         if not sys.platform.startswith("win"):
-            self.status_updated.emit("Đang cài đặt thư viện...")
             requirements_file = os.path.join(dest_dir, "requirements.txt")
             if os.path.exists(requirements_file):
-                subprocess.run([sys.executable, "-m", "pip", "install", "-r", requirements_file], check=True)
+                self.status_updated.emit("Đang cài đặt thư viện...")
+                try:
+                    subprocess.run(
+                        [sys.executable, "-m", "pip", "install", "--break-system-packages", "-r", requirements_file],
+                        check=True
+                    )
+                except subprocess.CalledProcessError as e:
+                    print(f"Lỗi khi cài đặt thư viện: {e}")
+                    self.status_updated.emit("Không thể cài đặt thư viện. Tiếp tục khởi động...")
             else:
                 print("Không tìm thấy file requirements.txt, bỏ qua cài đặt thư viện.")
 
