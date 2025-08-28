@@ -443,8 +443,7 @@ class SettingsDialog(QDialog):
         jvm_args = self.jvm_text_edit.toPlainText().strip().split()
 
         save_settings(ram_mb=ram_mb, mc_dir=mc_dir, filters=filters, dev_console=dev_console_enabled, hide_on_launch=hide_on_launch, jvm_args=jvm_args)
-        
-        # Sửa lỗi hiển thị DevConsole
+
         if dev_console_enabled and self.parent().dev_console.isHidden():
             self.parent().dev_console.show()
         elif not dev_console_enabled and self.parent().dev_console.isVisible():
@@ -1184,8 +1183,7 @@ class MaZultLauncher(QWidget):
                 }
             """)
             self.progress_label.setText("Cancelling...")
-            
-            # Loại bỏ lệnh chặn luồng để ứng dụng không bị treo
+
             # self.download_thread.wait()
 
             return
@@ -1456,4 +1454,5 @@ if __name__ == "__main__":
     else: 
         loading_window = LoadingWindow()
         loading_window.start_loading_animation()
+
         sys.exit(app.exec())
