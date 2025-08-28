@@ -7,9 +7,8 @@ import json
 import subprocess
 from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout, QProgressBar, QLabel, QMessageBox
 from PySide6.QtCore import QThread, Signal, Qt
-from PySide6.QtGui import QFont, QIcon  # Add QIcon here
+from PySide6.QtGui import QFont, QIcon
 
-# Thư viện này cần thiết cho hàm kiểm tra mới
 try:
     from pkg_resources import working_set
 except ImportError:
@@ -53,38 +52,38 @@ class UpdateWorker(QThread):
             self.cleanup()
             os.makedirs(TEMP_UPDATE_DIR, exist_ok=True)
 
-            self.status_updated.emit("Đang kiểm tra cập nhật...")
+            self.status_updated.emit("Checking for updates...")
             current_version = self.get_current_version()
             
             latest_release = None
             try:
                 latest_release = self.get_latest_release()
             except requests.exceptions.RequestException as e:
-                self.status_updated.emit("Không thể kết nối đến máy chủ cập nhật. Đang khởi động Launcher...")
-                print(f"Lỗi kết nối: {e}. Bỏ qua cập nhật.")
+                self.status_updated.emit("Cannot connect to update server. Starting Launcher...")
+                print(f"Connection error: {e}. Skipping update.")
                 self.cleanup()
                 self.update_success.emit()
                 return
             
             if not latest_release or not latest_release.tag_name:
-                self.status_updated.emit("Không thể lấy thông tin phiên bản mới nhất. Đang khởi động Launcher...")
+                self.status_updated.emit("Could not get latest version info. Starting Launcher...")
                 self.cleanup()
                 self.update_success.emit()
                 return
 
             latest_version = latest_release.tag_name
             
-            self.status_updated.emit(f"Phiên bản hiện tại: {current_version} | Phiên bản mới: {latest_version}")
+            self.status_updated.emit(f"Current Version: {current_version} | New Version: {latest_version}")
             
             if latest_version == current_version:
-                self.status_updated.emit("Bạn đang sử dụng phiên bản mới nhất. Đang khởi động...")
+                self.status_updated.emit("You are using the latest version. Starting...")
                 self.update_success.emit()
                 return
             
             download_url, total_size = self.get_download_url(latest_release)
             
             if not download_url:
-                self.status_updated.emit("Không tìm thấy tệp cập nhật phù hợp. Đang khởi động Launcher...")
+                self.status_updated.emit("No suitable update file found. Starting Launcher...")
                 self.update_success.emit()
                 return
             
@@ -99,7 +98,7 @@ class UpdateWorker(QThread):
             self.update_success.emit()
 
         except Exception as e:
-            self.status_updated.emit(f"Đã xảy ra lỗi: {e}. Đang khởi động Launcher...")
+            self.status_updated.emit(f"An error occurred: {e}. Starting Launcher...")
             self.cleanup()
             self.update_success.emit()
     
@@ -120,7 +119,7 @@ class UpdateWorker(QThread):
             with open(CURRENT_VERSION_FILE, 'w') as f:
                 json.dump({"version": new_version}, f)
         except Exception as e:
-            print(f"Lỗi khi cập nhật file app.json: {e}")
+            print(f"Error updating app.json file: {e}")
 
     def get_latest_release(self):
         headers = {"User-Agent": "AutoUpdater"}
@@ -131,7 +130,7 @@ class UpdateWorker(QThread):
     def get_download_url(self, release):
         os_name = sys.platform
         if os_name.startswith("win"):
-            tag = "-Win.zip"
+            tag = "-Win-x64.zip"
         else:
             tag = "-Universal.zip"
 
@@ -142,7 +141,7 @@ class UpdateWorker(QThread):
         return None, 0
 
     def download_update(self, url, file_path, total_size):
-        self.status_updated.emit("Đang tải xuống...")
+        self.status_updated.emit("Downloading...")
         with requests.get(url, stream=True, headers={"User-Agent": "AutoUpdater"}) as response:
             response.raise_for_status()
             with open(file_path, 'wb') as f:
@@ -155,7 +154,7 @@ class UpdateWorker(QThread):
         self.progress_updated.emit(total_size, total_size, 100) 
             
     def check_installed_packages(self, requirements_file):
-        """Kiểm tra xem các gói trong requirements.txt đã được cài đặt chưa."""
+        """Checks if packages in requirements.txt are installed."""
         missing_packages = []
         if working_set is None:
             return ["all"]
@@ -169,13 +168,13 @@ class UpdateWorker(QThread):
                 if req.lower() not in installed_packages:
                     missing_packages.append(req)
         except Exception as e:
-            print(f"Lỗi khi kiểm tra gói: {e}. Coi như cần cài đặt.")
+            print(f"Error checking packages: {e}. Assuming installation is needed.")
             return ["all"]
         
         return missing_packages
 
     def extract_and_install(self, zip_file_path, dest_dir):
-        self.status_updated.emit("Đang giải nén và cài đặt...")
+        self.status_updated.emit("Extracting and installing...")
         with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
             zip_ref.extractall(TEMP_UPDATE_DIR)
         
@@ -201,34 +200,34 @@ class UpdateWorker(QThread):
             if os.path.exists(requirements_file):
                 missing_packages = self.check_installed_packages(requirements_file)
                 if missing_packages:
-                    self.status_updated.emit("Đang cài đặt thư viện...")
+                    self.status_updated.emit("Installing libraries...")
                     try:
                         subprocess.run(
                             [sys.executable, "-m", "pip", "install", "--break-system-packages", "-r", requirements_file],
                             check=True
                         )
                     except subprocess.CalledProcessError as e:
-                        print(f"Lỗi khi cài đặt thư viện: {e}")
-                        self.status_updated.emit("Không thể cài đặt thư viện. Tiếp tục khởi động...")
+                        print(f"Error installing libraries: {e}")
+                        self.status_updated.emit("Could not install libraries. Continuing startup...")
                 else:
-                    self.status_updated.emit("Thư viện đã được cài đặt đầy đủ. Tiếp tục khởi động...")
-                    print("Tất cả thư viện đã được cài đặt. Bỏ qua lệnh pip.")
+                    self.status_updated.emit("Libraries are already installed. Continuing startup...")
+                    print("All libraries are installed. Skipping pip command.")
             else:
-                print("Không tìm thấy file requirements.txt, bỏ qua cài đặt thư viện.")
+                print("requirements.txt not found, skipping library installation.")
     def cleanup(self):
-        self.status_updated.emit("Đang dọn dẹp file tạm...")
+        self.status_updated.emit("Cleaning up temporary files...")
         if os.path.exists(TEMP_UPDATE_DIR):
             try:
                 shutil.rmtree(TEMP_UPDATE_DIR)
             except OSError as e:
-                print(f"Lỗi khi xóa thư mục tạm: {e}")
+                print(f"Error deleting temporary directory: {e}")
 
 class UpdaterApp(QWidget):
     def __init__(self):
         super().__init__()
         self.setFixedSize(400, 200)
         self.setWindowTitle("MaZult Launcher")
-        self.setWindowIcon(QIcon("icon.ico"))  # Sử dụng file icon.ico
+        self.setWindowIcon(QIcon("icon.ico"))
         self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint)
         self.setStyleSheet("background-color: #202020; color: #FFFFFF;")
 
@@ -275,10 +274,10 @@ class UpdaterApp(QWidget):
     def update_progress(self, current, total, percent):
         self.progress_bar.setValue(percent)
         self.progress_bar.setTextVisible(True)
-        self.status_label.setText(f"Đang tải xuống: {current / (1024*1024):.2f} MB / {total / (1024*1024):.2f} MB")
+        self.status_label.setText(f"Downloading: {current / (1024*1024):.2f} MB / {total / (1024*1024):.2f} MB")
 
     def on_update_success(self):
-        self.update_status("Đã cập nhật thành công. Đang khởi động Launcher...")
+        self.update_status("Update successful. Starting Launcher...")
         try:
             launcher_path = ""
             if sys.platform.startswith("win"):
@@ -289,7 +288,7 @@ class UpdaterApp(QWidget):
                 command = [sys.executable, launcher_path, '--Launcher']
 
             if not os.path.exists(launcher_path):
-                raise FileNotFoundError(f"Không tìm thấy file Launcher: {launcher_path}")
+                raise FileNotFoundError(f"Launcher file not found: {launcher_path}")
             
             if sys.platform.startswith("win"):
                 subprocess.Popen(command, shell=True)
@@ -297,14 +296,14 @@ class UpdaterApp(QWidget):
                 subprocess.Popen(command, start_new_session=True)
             
         except (FileNotFoundError, OSError) as e:
-            QMessageBox.critical(self, "Lỗi khởi chạy", f"Không thể khởi chạy ứng dụng chính: {e}")
+            QMessageBox.critical(self, "Error", f"Could not launch the main application: {e}")
 
         QApplication.quit()
 
     def closeEvent(self, event):
         if self.worker.isRunning():
             event.ignore()
-            QMessageBox.warning(self, "Đang cập nhật", "Không thể đóng cửa sổ trong quá trình cập nhật. Vui lòng chờ.")
+            QMessageBox.warning(self, "Update", "You can't close during an update. Please wait.")
         else:
             self.worker.is_running = False
             self.worker.wait()

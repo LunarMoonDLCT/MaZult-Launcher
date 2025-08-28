@@ -1099,7 +1099,6 @@ class MaZultLauncher(QWidget):
         """
 
     def on_set_status(self, text):
-        # hiển thị trạng thái tổng quát
         self.progress_label.setText(text)
 
     def on_set_progress(self, value):
@@ -1109,7 +1108,6 @@ class MaZultLauncher(QWidget):
         self.progress_bar.setMaximum(maximum)
 
     def on_set_file(self, text, current, total, speed):
-        # Tính tốc độ tải theo MB/s hoặc KB/s
         if speed < 1024:
             spd = f"{speed:.1f} B/s"
         elif speed < 1024**2:
@@ -1117,19 +1115,16 @@ class MaZultLauncher(QWidget):
         else:
             spd = f"{speed/1024**2:.2f} MB/s"
 
-        # Hiển thị dung lượng đã tải / tổng dung lượng (MB)
         self.progress_label.setText(
             f"Downloading: {text} "
             f"({current/1024/1024:.2f}/{total/1024/1024:.2f} MB) @ {spd}"
         )
-    
-    # Phương thức này sẽ được gọi sau khi luồng tải xuống kết thúc (thành công hoặc bị hủy)
+
     def after_download(self, selected_version_id, options, settings):
         self.is_downloading = False
         self.progress_label.hide()
         self.progress_bar.hide()
-        
-        # Nếu luồng tải xuống bị hủy, reset lại giao diện và dừng lại
+
         if self.download_thread._cancelled:
             print("Download process was cancelled.")
             self.reset_after_cancel()
@@ -1143,7 +1138,6 @@ class MaZultLauncher(QWidget):
             )
             print("Launching with command:", " ".join(command))
 
-            # Nút thành Launching
             self.play_button.setText("Launching...")
             self.play_button.setEnabled(False)
             self.play_button.setStyleSheet(self.load_styles())
@@ -1171,7 +1165,6 @@ class MaZultLauncher(QWidget):
         self.progress_bar.hide()
         self.play_button.setText("Play")
         self.play_button.setEnabled(True)
-        # Sửa: Đặt lại style của nút Play về mặc định
         self.play_button.setStyleSheet(self.load_styles())
 
     def on_play_clicked(self):
@@ -1179,10 +1172,8 @@ class MaZultLauncher(QWidget):
             print("Download canceled by user.")
             self.download_thread.cancel()
             
-            # Vô hiệu hóa nút và thay đổi giao diện
             self.play_button.setEnabled(False)
             self.play_button.setText("Please wait")
-            # Style đặc biệt cho nút khi bị vô hiệu hóa
             self.play_button.setStyleSheet("""
                 QPushButton#playButton {
                     background-color: #2a1c36;
@@ -1253,7 +1244,6 @@ class MaZultLauncher(QWidget):
             "jvmArguments": final_jvm_args
         }
 
-        # Hiển thị progress bar khi tải/cài
         self.progress_label.show()
         self.progress_bar.show()
         self.progress_label.setText("Preparing download...")
@@ -1262,7 +1252,6 @@ class MaZultLauncher(QWidget):
         self.is_downloading = True
         self.play_button.setText("Cancel")
         self.play_button.setEnabled(True)
-        # Sửa: Đặt lại style của nút Play khi là "Cancel"
         self.play_button.setStyleSheet(self.load_styles())
 
         self.download_thread = DownloadThread(selected_version_id, minecraft_directory)
@@ -1281,7 +1270,7 @@ class DownloadThread(QThread):
     status_signal = Signal(str)
     value_signal = Signal(int)
     max_signal = Signal(int)
-    finished_signal = Signal(bool)  # True nếu hoàn tất, False nếu bị hủy
+    finished_signal = Signal(bool) 
 
     def __init__(self, version_id, minecraft_directory):
         super().__init__()
@@ -1398,7 +1387,7 @@ class LoadingWindow(QWidget):
         self.timer.stop()
         
         reply = QMessageBox.question(self, "Update Available",
-                                     f"Phiên bản mới {latest_version} đã có. Bạn có muốn cập nhật không?",
+                                     f"New version {latest_version}. Do you want to update?",
                                      QMessageBox.Yes | QMessageBox.No)
         
         if reply == QMessageBox.Yes:
@@ -1414,13 +1403,13 @@ class LoadingWindow(QWidget):
         if self.progress < 100:
             self.progress += 10
             if self.progress == 10:
-                self.update_progress(self.progress, "Đang Check For Update...")
+                self.update_progress(self.progress, "Check For Update...")
             elif self.progress == 50:
-                self.update_progress(self.progress, "Đang tải cấu hình...")
+                self.update_progress(self.progress, "Loading config.")
             elif self.progress == 90:
-                self.update_progress(self.progress, "Đang chuẩn bị giao diện...")
+                self.update_progress(self.progress, "Loading GUI...")
             else:
-                self.update_progress(self.progress, "Đang khởi tạo...")
+                self.update_progress(self.progress, "Starting...")
         else:
             self.timer.stop()
             self.main_window = MaZultLauncher(self.update_info)
