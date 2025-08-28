@@ -28,7 +28,7 @@ import datetime
 import uuid
 import packaging.version
 
-LAUNCHER_VERSION = "1.0.0"
+LAUNCHER_VERSION = "1.1.0"
 GITHUB_API_URL = "https://api.github.com/repos/LunarMoonDLCT/MaZult-Launcher/releases/latest"
 
 class UpdateChecker(QObject):
@@ -241,6 +241,40 @@ def get_mojang_uuid(username):
     except requests.exceptions.RequestException as e:
         print(f"Network error while fetching Mojang UUID: {e}")
         return None
+
+def download_icon(target_path):
+    """Downloads the icon from the GitHub repository."""
+    assets_api_url = "https://api.github.com/repos/LunarMoonDLCT/MZassets/releases/latest"
+    icon_filename = "icon.ico"
+
+    if target_path.exists():
+        print("Icon already exists. Skipping download.")
+        return
+
+    try:
+        response = requests.get(assets_api_url, timeout=10)
+        if response.status_code == 200:
+            release_info = response.json()
+            download_url = None
+            for asset in release_info.get("assets", []):
+                if asset.get("name") == icon_filename:
+                    download_url = asset["browser_download_url"]
+                    break
+
+            if download_url:
+                print(f"Downloading icon from {download_url}")
+                os.makedirs(target_path.parent, exist_ok=True)
+                with requests.get(download_url, stream=True, timeout=30) as r:
+                    r.raise_for_status()
+                    with open(target_path, 'wb') as f:
+                        shutil.copyfileobj(r.raw, f)
+                print("Icon downloaded successfully.")
+            else:
+                print("Could not find the icon asset in the latest release.")
+        else:
+            print(f"Failed to fetch assets release: Status {response.status_code}")
+    except requests.exceptions.RequestException as e:
+        print(f"Network error while downloading icon: {e}")
 
 class SettingsDialog(QDialog):
     refreshVersions = Signal()
@@ -783,12 +817,12 @@ class MaZultLauncher(QWidget):
         super().__init__()
         self.appdata_dir = get_appdata_path()
         self.assets_dir = self.appdata_dir / "assets"
-        self.icon_path = self.assets_dir / "comming soon.ico"
+        self.icon_path = self.assets_dir / "icon.ico"
         self.mc_process = None
         self.minecraft_thread = None
         self.download_thread = None
         self.update_info = update_info
-        
+
         self.dev_console = DevConsole(self, styles=self.load_styles())
         if load_settings().get("dev_console", False):
             self.dev_console.show()
@@ -1294,10 +1328,18 @@ class DownloadThread(QThread):
 class LoadingWindow(QWidget):
     def __init__(self):
         super().__init__()
+        self.appdata_dir = get_appdata_path()
+
+        self.assets_dir = self.appdata_dir / "assets"
+        self.icon_path = self.assets_dir / "icon.ico"
+        download_icon(self.icon_path)
+        
+
         self.setFixedSize(400, 200)
         self.setWindowTitle("Loading...")
         self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint)
         self.setStyleSheet("background-color: #202020;")
+        self.setWindowIcon(QIcon(str(self.icon_path)))
 
         layout = QVBoxLayout()
         layout.setAlignment(Qt.AlignCenter)
@@ -1310,6 +1352,7 @@ class LoadingWindow(QWidget):
         self.status_label = QLabel("Initializing...")
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.status_label)
+
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)

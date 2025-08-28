@@ -7,7 +7,7 @@ import json
 import subprocess
 from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout, QProgressBar, QLabel, QMessageBox
 from PySide6.QtCore import QThread, Signal, Qt
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QIcon  # Add QIcon here
 
 # Thư viện này cần thiết cho hàm kiểm tra mới
 try:
@@ -158,7 +158,6 @@ class UpdateWorker(QThread):
         """Kiểm tra xem các gói trong requirements.txt đã được cài đặt chưa."""
         missing_packages = []
         if working_set is None:
-            
             return ["all"]
             
         try:
@@ -229,6 +228,7 @@ class UpdaterApp(QWidget):
         super().__init__()
         self.setFixedSize(400, 200)
         self.setWindowTitle("MaZult Launcher")
+        self.setWindowIcon(QIcon("icon.ico"))  # Sử dụng file icon.ico
         self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint)
         self.setStyleSheet("background-color: #202020; color: #FFFFFF;")
 
