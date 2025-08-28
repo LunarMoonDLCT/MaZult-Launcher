@@ -1396,7 +1396,7 @@ class LoadingWindow(QWidget):
             QApplication.instance().quit()
         else:
             self.timer.start(100)
-            self.update_progress(100, "Đang chuẩn bị giao diện...")
+            self.update_progress(100, "Loading GUI...")
 
 
     def update_loading_state(self):
@@ -1409,7 +1409,7 @@ class LoadingWindow(QWidget):
             elif self.progress == 90:
                 self.update_progress(self.progress, "Loading GUI...")
             else:
-                self.update_progress(self.progress, "Starting...")
+                self.update_progress(self.progress, "Installizing...")
         else:
             self.timer.stop()
             self.main_window = MaZultLauncher(self.update_info)
