@@ -9,6 +9,12 @@ from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout, QProgressBar, 
 from PySide6.QtCore import QThread, Signal, Qt
 from PySide6.QtGui import QFont
 
+# Thư viện này cần thiết cho hàm kiểm tra mới
+try:
+    from pkg_resources import working_set
+except ImportError:
+    working_set = None
+
 GITHUB_API_URL = "https://api.github.com/repositories/1044123558/releases/latest"
 
 if getattr(sys, 'frozen', False):
@@ -148,6 +154,27 @@ class UpdateWorker(QThread):
                     self.progress_updated.emit(downloaded_bytes, total_size, int((downloaded_bytes / total_size) * 100))
         self.progress_updated.emit(total_size, total_size, 100) 
             
+    def check_installed_packages(self, requirements_file):
+        """Kiểm tra xem các gói trong requirements.txt đã được cài đặt chưa."""
+        missing_packages = []
+        if working_set is None:
+            
+            return ["all"]
+            
+        try:
+            installed_packages = {pkg.key for pkg in working_set}
+            with open(requirements_file, 'r') as f:
+                required_packages = [line.strip().split('==')[0].split('>')[0].split('<')[0] for line in f if line.strip() and not line.strip().startswith('#')]
+            
+            for req in required_packages:
+                if req.lower() not in installed_packages:
+                    missing_packages.append(req)
+        except Exception as e:
+            print(f"Lỗi khi kiểm tra gói: {e}. Coi như cần cài đặt.")
+            return ["all"]
+        
+        return missing_packages
+
     def extract_and_install(self, zip_file_path, dest_dir):
         self.status_updated.emit("Đang giải nén và cài đặt...")
         with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
@@ -173,18 +200,22 @@ class UpdateWorker(QThread):
         if not sys.platform.startswith("win"):
             requirements_file = os.path.join(dest_dir, "requirements.txt")
             if os.path.exists(requirements_file):
-                self.status_updated.emit("Đang cài đặt thư viện...")
-                try:
-                    subprocess.run(
-                        [sys.executable, "-m", "pip", "install", "--break-system-packages", "-r", requirements_file],
-                        check=True
-                    )
-                except subprocess.CalledProcessError as e:
-                    print(f"Lỗi khi cài đặt thư viện: {e}")
-                    self.status_updated.emit("Không thể cài đặt thư viện. Tiếp tục khởi động...")
+                missing_packages = self.check_installed_packages(requirements_file)
+                if missing_packages:
+                    self.status_updated.emit("Đang cài đặt thư viện...")
+                    try:
+                        subprocess.run(
+                            [sys.executable, "-m", "pip", "install", "--break-system-packages", "-r", requirements_file],
+                            check=True
+                        )
+                    except subprocess.CalledProcessError as e:
+                        print(f"Lỗi khi cài đặt thư viện: {e}")
+                        self.status_updated.emit("Không thể cài đặt thư viện. Tiếp tục khởi động...")
+                else:
+                    self.status_updated.emit("Thư viện đã được cài đặt đầy đủ. Tiếp tục khởi động...")
+                    print("Tất cả thư viện đã được cài đặt. Bỏ qua lệnh pip.")
             else:
                 print("Không tìm thấy file requirements.txt, bỏ qua cài đặt thư viện.")
-
     def cleanup(self):
         self.status_updated.emit("Đang dọn dẹp file tạm...")
         if os.path.exists(TEMP_UPDATE_DIR):

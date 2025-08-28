@@ -395,7 +395,7 @@ class SettingsDialog(QDialog):
         if not os.path.exists(mc_dir):
             QMessageBox.warning(self, "Invalid Path", "The specified Minecraft directory does not exist.")
             return
-
+        
         filters = {
             "release": self.release_checkbox.isChecked(),
             "snapshot": self.snapshot_checkbox.isChecked(),
@@ -410,6 +410,7 @@ class SettingsDialog(QDialog):
 
         save_settings(ram_mb=ram_mb, mc_dir=mc_dir, filters=filters, dev_console=dev_console_enabled, hide_on_launch=hide_on_launch, jvm_args=jvm_args)
         
+        # Sửa lỗi hiển thị DevConsole
         if dev_console_enabled and self.parent().dev_console.isHidden():
             self.parent().dev_console.show()
         elif not dev_console_enabled and self.parent().dev_console.isVisible():
@@ -514,11 +515,13 @@ class UserManagerDialog(QDialog):
             QMessageBox.warning(self, "No Selection", "Please select a user.")
 
 class DevConsole(QWidget):
-    def __init__(self, parent=None):
-        super().__init__(parent)
+    def __init__(self, parent_launcher, styles=""):
+        super().__init__()
+        self.parent_launcher = parent_launcher
         self.setWindowTitle("Developer Console")
         self.setMinimumSize(700, 400)
-        self.setWindowFlags(Qt.Window)
+        
+        self.setStyleSheet(styles)
         
         self.layout = QVBoxLayout(self)
         self.console_output = QPlainTextEdit()
@@ -547,14 +550,14 @@ class DevConsole(QWidget):
             self.kill_button.setEnabled(enabled)
 
     def kill_minecraft_process(self):
-        if self.parent() and self.parent().minecraft_thread and self.parent().minecraft_thread.process:
+        if self.parent_launcher.minecraft_thread and self.parent_launcher.minecraft_thread.process:
             try:
-                self.parent().minecraft_thread.process.kill()
-                self.parent().minecraft_thread.process.wait()
+                self.parent_launcher.minecraft_thread.process.kill()
+                self.parent_launcher.minecraft_thread.process.wait()
                 print("Minecraft process killed.")
                 self.set_kill_button_enabled(False)
-                if self.parent().isHidden():
-                    self.parent().show()
+                if self.parent_launcher.isHidden():
+                    self.parent_launcher.show()
             except Exception as e:
                 print(f"Failed to kill Minecraft process: {e}")
 
@@ -786,7 +789,7 @@ class MaZultLauncher(QWidget):
         self.download_thread = None
         self.update_info = update_info
         
-        self.dev_console = DevConsole(self)
+        self.dev_console = DevConsole(self, styles=self.load_styles())
         if load_settings().get("dev_console", False):
             self.dev_console.show()
 
@@ -838,7 +841,7 @@ class MaZultLauncher(QWidget):
         content_layout.setContentsMargins(20, 20, 20, 20)
         
         header_layout = QHBoxLayout()
-        title = QLabel("MaZult Launcher")
+        title = QLabel("Minecraft")
         title.setFont(QFont("Segoe UI", 24, QFont.Bold))
         refresh_button = QPushButton("↻")
         refresh_button.setFixedSize(30, 30)
@@ -859,10 +862,23 @@ class MaZultLauncher(QWidget):
         
         content_layout.addStretch()
 
+        # Progress UI
+        self.progress_label = QLabel()
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setValue(0)
+        self.progress_bar.setMaximum(100)
+        self.progress_label.hide()
+        self.progress_bar.hide()
+        content_layout.addWidget(self.progress_label)
+        content_layout.addWidget(self.progress_bar)
+
+
         self.play_button = QPushButton("Play")
         self.play_button.setObjectName("playButton")
-        self.play_button.setStyleSheet("background-color: #4F2E70; color: #FFFFFF; border: none; font-weight: bold; font-size: 16px; border-radius: 4px;")
+        self.play_button.setStyleSheet(self.load_styles())
         self.play_button.clicked.connect(self.on_play_clicked)
+        self.is_downloading = False
+
         content_layout.addWidget(self.play_button)
         
         main_layout.addLayout(content_layout)
@@ -882,6 +898,7 @@ class MaZultLauncher(QWidget):
         if self.play_button and not self.play_button.parent() is None:
             self.play_button.setText("Play")
             self.play_button.setEnabled(True)
+            self.play_button.setStyleSheet(self.load_styles()) # Reset to normal
             self.dev_console.set_kill_button_enabled(False)
             self.mc_process = None
             self.minecraft_thread = None
@@ -971,21 +988,21 @@ class MaZultLauncher(QWidget):
         
         /* Play Button (Primary Action) */
         QPushButton#playButton {
-            background-color: #4F2E70;
+            background-color: #4F2E70; /* Tím */
             border: none;
             font-weight: bold;
             font-size: 16px;
         }
         QPushButton#playButton:hover {
-            background-color: #6a4692;
+            background-color: #6a4692; /* Tím nhạt hơn khi hover */
         }
         QPushButton#playButton:pressed {
-            background-color: #3d2358;
+            background-color: #3d2358; /* Tím đậm hơn khi nhấn */
         }
         
         /* New style for the disabled Play button */
         QPushButton#playButton:disabled {
-            background-color: #606060; /* Màu xám */
+            background-color: #2a1c36; /* Tím siêu đen khi bị vô hiệu hóa */
             color: #A0A0A0; /* Chữ màu xám nhạt */
         }
 
@@ -1048,6 +1065,7 @@ class MaZultLauncher(QWidget):
         """
 
     def on_set_status(self, text):
+        # hiển thị trạng thái tổng quát
         self.progress_label.setText(text)
 
     def on_set_progress(self, value):
@@ -1057,20 +1075,96 @@ class MaZultLauncher(QWidget):
         self.progress_bar.setMaximum(maximum)
 
     def on_set_file(self, text, current, total, speed):
+        # Tính tốc độ tải theo MB/s hoặc KB/s
         if speed < 1024:
             spd = f"{speed:.1f} B/s"
         elif speed < 1024**2:
             spd = f"{speed/1024:.1f} KB/s"
         else:
-            spd = f"{speed/1024**2:.1f} MB/s"
+            spd = f"{speed/1024**2:.2f} MB/s"
 
+        # Hiển thị dung lượng đã tải / tổng dung lượng (MB)
         self.progress_label.setText(
             f"Downloading: {text} "
             f"({current/1024/1024:.2f}/{total/1024/1024:.2f} MB) @ {spd}"
         )
+    
+    # Phương thức này sẽ được gọi sau khi luồng tải xuống kết thúc (thành công hoặc bị hủy)
+    def after_download(self, selected_version_id, options, settings):
+        self.is_downloading = False
+        self.progress_label.hide()
+        self.progress_bar.hide()
+        
+        # Nếu luồng tải xuống bị hủy, reset lại giao diện và dừng lại
+        if self.download_thread._cancelled:
+            print("Download process was cancelled.")
+            self.reset_after_cancel()
+            return
+            
+        try:
+            command = minecraft_launcher_lib.command.get_minecraft_command(
+                selected_version_id,
+                get_minecraft_directory(),
+                options
+            )
+            print("Launching with command:", " ".join(command))
 
+            # Nút thành Launching
+            self.play_button.setText("Launching...")
+            self.play_button.setEnabled(False)
+            self.play_button.setStyleSheet(self.load_styles())
+
+            hide_on_launch = settings.get("hide_on_launch", True)
+            if hide_on_launch:
+                self.hide()
+                
+            self.minecraft_thread = MinecraftThread(command, get_minecraft_directory(), self)
+            self.minecraft_thread.finished_signal.connect(self.on_minecraft_finished)
+            self.minecraft_thread.log_signal.connect(self.on_minecraft_log)
+            self.dev_console.set_kill_button_enabled(True)
+            self.minecraft_thread.start()
+        except Exception as e:
+            QMessageBox.critical(self, "Launch Error", f"Failed to launch Minecraft:\n{e}")
+            self.dev_console.set_kill_button_enabled(False)
+            self.play_button.setText("Play")
+            self.play_button.setEnabled(True)
+            self.play_button.setStyleSheet(self.load_styles())
+            self.show()
+
+    def reset_after_cancel(self):
+        self.is_downloading = False
+        self.progress_label.hide()
+        self.progress_bar.hide()
+        self.play_button.setText("Play")
+        self.play_button.setEnabled(True)
+        # Sửa: Đặt lại style của nút Play về mặc định
+        self.play_button.setStyleSheet(self.load_styles())
 
     def on_play_clicked(self):
+        if self.is_downloading and self.download_thread and self.download_thread.isRunning():
+            print("Download canceled by user.")
+            self.download_thread.cancel()
+            
+            # Vô hiệu hóa nút và thay đổi giao diện
+            self.play_button.setEnabled(False)
+            self.play_button.setText("Please wait")
+            # Style đặc biệt cho nút khi bị vô hiệu hóa
+            self.play_button.setStyleSheet("""
+                QPushButton#playButton {
+                    background-color: #2a1c36;
+                    color: white;
+                    border: none;
+                    font-weight: bold;
+                    font-size: 16px;
+                }
+            """)
+            self.progress_label.setText("Cancelling...")
+            
+            # Loại bỏ lệnh chặn luồng để ứng dụng không bị treo
+            # self.download_thread.wait()
+
+            return
+
         username = self.username_combo.currentText()
         if username == "Manage Users...":
             QMessageBox.warning(self, "Invalid User", "Please select a valid username.")
@@ -1085,11 +1179,9 @@ class MaZultLauncher(QWidget):
         allocated_ram_mb = settings.get("ram_mb", 2048)
         
         user_uuid = get_mojang_uuid(username)
-        
         if user_uuid is None:
             print(f"Cannot get Mojang UUID for {username}. Using offline UUID.")
             user_uuid = str(uuid.uuid3(uuid.NAMESPACE_URL, "OfflinePlayer:" + username))
-
         user_token = user_uuid
 
         minecraft_directory = get_minecraft_directory()
@@ -1105,7 +1197,12 @@ class MaZultLauncher(QWidget):
             elif arg.startswith("-Xms"):
                 final_jvm_args.append(arg)
                 overridden_args.add("Xms")
-            elif arg.startswith(("-Dlog4j2.formatMsgNoLookups", "-Dos.name", "-Dos.version", "-Djava.library.path", "-Dminecraft.launcher.brand", "-Dminecraft.launcher.version", "-cp", "-Djava.net.preferIPv4Stack=true")):
+            elif arg.startswith((
+                "-Dlog4j2.formatMsgNoLookups", "-Dos.name", "-Dos.version",
+                "-Djava.library.path", "-Dminecraft.launcher.brand",
+                "-Dminecraft.launcher.version", "-cp",
+                "-Djava.net.preferIPv4Stack=true"
+            )):
                 final_jvm_args.append(arg)
             else:
                 final_jvm_args.append(arg)
@@ -1115,61 +1212,84 @@ class MaZultLauncher(QWidget):
                 continue
             final_jvm_args.append(arg)
 
-
         options = {
             "username": username,
             "uuid": user_uuid,
             "token": user_token,
             "jvmArguments": final_jvm_args
         }
+
+        # Hiển thị progress bar khi tải/cài
+        self.progress_label.show()
+        self.progress_bar.show()
+        self.progress_label.setText("Preparing download...")
+        self.progress_bar.setValue(0)
+
+        self.is_downloading = True
+        self.play_button.setText("Cancel")
+        self.play_button.setEnabled(True)
+        # Sửa: Đặt lại style của nút Play khi là "Cancel"
+        self.play_button.setStyleSheet(self.load_styles())
+
+        self.download_thread = DownloadThread(selected_version_id, minecraft_directory)
+        self.download_thread.status_signal.connect(self.on_set_status)
+        self.download_thread.value_signal.connect(self.on_set_progress)
+        self.download_thread.max_signal.connect(self.on_set_max)
+        self.download_thread.progress_signal.connect(self.on_set_file)
+        self.download_thread.finished.connect(self.download_thread.deleteLater)
+        self.download_thread.finished_signal.connect(
+            lambda success: self.after_download(selected_version_id, options, settings)
+        )
+        self.download_thread.start()
+
+class DownloadThread(QThread):
+    progress_signal = Signal(str, int, int, float)
+    status_signal = Signal(str)
+    value_signal = Signal(int)
+    max_signal = Signal(int)
+    finished_signal = Signal(bool)  # True nếu hoàn tất, False nếu bị hủy
+
+    def __init__(self, version_id, minecraft_directory):
+        super().__init__()
+        self.version_id = version_id
+        self.minecraft_directory = minecraft_directory
+        self._cancelled = False
+        self.is_running = True
+
+    def cancel(self):
+        self._cancelled = True
         
-        self.play_button.setText("Launching...")
-        self.play_button.setEnabled(False)
-
+    def run(self):
         try:
-            installed_versions = get_installed_versions()
-            if selected_version_id not in installed_versions:
-                reply = QMessageBox.question(self, "Download Version", f"Version {selected_version_id} is not installed. Do you want to download and install it?", QMessageBox.Yes | QMessageBox.No)
-                if reply == QMessageBox.Yes:
-                    minecraft_launcher_lib.install.install_minecraft_version(
-                        selected_version_id,
-                        minecraft_directory
-                    )
-                else:
-                    self.play_button.setText("Play")
-                    self.play_button.setEnabled(True)
-                    return
-            else:
-                print(f"Checking and repairing installation for {selected_version_id}...")
-                minecraft_launcher_lib.install.install_minecraft_version(
-                    selected_version_id,
-                    minecraft_directory
-                )
-
-            command = minecraft_launcher_lib.command.get_minecraft_command(
-                selected_version_id,
-                minecraft_directory,
-                options
+            minecraft_launcher_lib.install.install_minecraft_version(
+                self.version_id,
+                self.minecraft_directory,
+                callback={
+                    "setStatus": self.status_signal.emit,
+                    "setProgress": self.value_signal.emit,
+                    "setMax": self.max_signal.emit,
+                    "setFile": self._on_file
+                }
             )
-
-            print("Launching with command:", " ".join(command))
-
-            hide_on_launch = settings.get("hide_on_launch", True)
-            if hide_on_launch:
-                self.hide()
-                
-            self.minecraft_thread = MinecraftThread(command, minecraft_directory, self)
-            self.minecraft_thread.finished_signal.connect(self.on_minecraft_finished)
-            self.minecraft_thread.log_signal.connect(self.on_minecraft_log)
-            self.dev_console.set_kill_button_enabled(True)
-            self.minecraft_thread.start()
-
+            if not self._cancelled:
+                self.finished_signal.emit(True)
+            else:
+                self.finished_signal.emit(False)
         except Exception as e:
-            QMessageBox.critical(self, "Launch Error", f"Failed to launch Minecraft:\n{e}")
-            self.dev_console.set_kill_button_enabled(False)
-            self.play_button.setText("Play")
-            self.play_button.setEnabled(True)
-            self.show()
+            if str(e) == "Download cancelled":
+                print(f"Download thread finished because it was cancelled.")
+            else:
+                print(f"Download error: {e}")
+            self.finished_signal.emit(False)
+        finally:
+            self.is_running = False
+
+    def _on_file(self, text, cur, tot, spd):
+        if self._cancelled:
+            print("Download aborted safely.")
+            raise Exception("Download cancelled")
+        self.progress_signal.emit(text, cur, tot, spd)
+
 
 class LoadingWindow(QWidget):
     def __init__(self):
@@ -1188,7 +1308,7 @@ class LoadingWindow(QWidget):
         layout.addWidget(self.title_label)
 
         self.status_label = QLabel("Initializing...")
-        self.status_label.setAlignment(Qt.AlignCenter)
+        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.status_label)
 
         self.progress_bar = QProgressBar()
