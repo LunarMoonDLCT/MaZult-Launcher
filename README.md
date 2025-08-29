@@ -15,8 +15,7 @@ MaZult Launcher is a lightweight and feature-rich Minecraft launcher designed fo
 - Transparent and Open-Source: As an open-source project, the code is fully visible, so you can check how it works and contribute.
 
 ## How to Use
-- For Windows Users
-
+- For Windows Users. 
 Download the latest MaZultLauncher.exe from our GitHub releases page.
 
 Run the executable file. The launcher will automatically handle all necessary setup and updates.
