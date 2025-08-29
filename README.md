@@ -15,12 +15,12 @@ MaZult Launcher is a lightweight and feature-rich Minecraft launcher designed fo
 - Transparent and Open-Source: As an open-source project, the code is fully visible, so you can check how it works and contribute.
 
 ## How to Use
-- For Windows Users
+- For Windows Users.
 Download the latest MaZultLauncher.exe from our GitHub releases page.
 
 Run the executable file. The launcher will automatically handle all necessary setup and updates.
 
-- For Linux and macOS Users
+- For Linux and macOS Users.
 Prerequisites: Make sure you have Python 3.8+ installed on your system.
 
 Install Required Libraries: Open your terminal and run the following command to install all dependencies:
