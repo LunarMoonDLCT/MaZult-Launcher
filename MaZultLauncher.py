@@ -130,7 +130,7 @@ class UpdateWorker(QThread):
     def get_download_url(self, release):
         os_name = sys.platform
         if os_name.startswith("win"):
-            tag = "-Win-x64.zip"
+            tag = "-Win.zip"
         else:
             tag = "-Universal.zip"
 

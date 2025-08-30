@@ -26,7 +26,6 @@ from PySide6.QtCore import (
 import minecraft_launcher_lib
 import datetime
 import uuid
-import packaging.version
 
 LAUNCHER_VERSION = "1.1.0"
 GITHUB_API_URL = "https://api.github.com/repos/LunarMoonDLCT/MaZult-Launcher/releases/latest"
@@ -242,40 +241,6 @@ def get_mojang_uuid(username):
         print(f"Network error while fetching Mojang UUID: {e}")
         return None
 
-def download_icon(target_path):
-    """Downloads the icon from the GitHub repository."""
-    assets_api_url = "https://api.github.com/repos/LunarMoonDLCT/MZassets/releases/latest"
-    icon_filename = "icon.ico"
-
-    if target_path.exists():
-        print("Icon already exists. Skipping download.")
-        return
-
-    try:
-        response = requests.get(assets_api_url, timeout=10)
-        if response.status_code == 200:
-            release_info = response.json()
-            download_url = None
-            for asset in release_info.get("assets", []):
-                if asset.get("name") == icon_filename:
-                    download_url = asset["browser_download_url"]
-                    break
-
-            if download_url:
-                print(f"Downloading icon from {download_url}")
-                os.makedirs(target_path.parent, exist_ok=True)
-                with requests.get(download_url, stream=True, timeout=30) as r:
-                    r.raise_for_status()
-                    with open(target_path, 'wb') as f:
-                        shutil.copyfileobj(r.raw, f)
-                print("Icon downloaded successfully.")
-            else:
-                print("Could not find the icon asset in the latest release.")
-        else:
-            print(f"Failed to fetch assets release: Status {response.status_code}")
-    except requests.exceptions.RequestException as e:
-        print(f"Network error while downloading icon: {e}")
-
 class SettingsDialog(QDialog):
     refreshVersions = Signal()
 
@@ -368,7 +333,6 @@ class SettingsDialog(QDialog):
         dev_layout.addStretch()
         dev_tab.setLayout(dev_layout)
         
-        # New "About Launcher" tab
         about_tab = QWidget()
         about_layout = QVBoxLayout()
         
@@ -443,7 +407,7 @@ class SettingsDialog(QDialog):
         jvm_args = self.jvm_text_edit.toPlainText().strip().split()
 
         save_settings(ram_mb=ram_mb, mc_dir=mc_dir, filters=filters, dev_console=dev_console_enabled, hide_on_launch=hide_on_launch, jvm_args=jvm_args)
-
+        
         if dev_console_enabled and self.parent().dev_console.isHidden():
             self.parent().dev_console.show()
         elif not dev_console_enabled and self.parent().dev_console.isVisible():
@@ -815,8 +779,7 @@ class MaZultLauncher(QWidget):
     def __init__(self, update_info=None):
         super().__init__()
         self.appdata_dir = get_appdata_path()
-        self.assets_dir = self.appdata_dir / "assets"
-        self.icon_path = self.assets_dir / "icon.ico"
+        self.icon_path = resource_path("icon.ico")
         self.mc_process = None
         self.minecraft_thread = None
         self.download_thread = None
@@ -895,7 +858,6 @@ class MaZultLauncher(QWidget):
         
         content_layout.addStretch()
 
-        # Progress UI
         self.progress_label = QLabel()
         self.progress_bar = QProgressBar()
         self.progress_bar.setValue(0)
@@ -931,7 +893,7 @@ class MaZultLauncher(QWidget):
         if self.play_button and not self.play_button.parent() is None:
             self.play_button.setText("Play")
             self.play_button.setEnabled(True)
-            self.play_button.setStyleSheet(self.load_styles()) # Reset to normal
+            self.play_button.setStyleSheet(self.load_styles())
             self.dev_console.set_kill_button_enabled(False)
             self.mc_process = None
             self.minecraft_thread = None
@@ -971,7 +933,6 @@ class MaZultLauncher(QWidget):
 
     def load_styles(self):
         return """
-        /* Main Window and General Widgets */
         QWidget {
             background-color: #202020;
             color: #E0E0E0;
@@ -979,13 +940,11 @@ class MaZultLauncher(QWidget):
             font-size: 14px;
         }
         
-        /* Sidebar Frame */
         QFrame {
             background-color: #252525;
             border-right: 1px solid #404040;
         }
 
-        /* Input Fields and Dropdowns (QLineEdit, QComboBox) */
         QLineEdit, QComboBox {
             background-color: #353535;
             border: 1px solid #404040;
@@ -1001,7 +960,6 @@ class MaZultLauncher(QWidget):
         }
 
 
-        /* Standard Buttons */
         QPushButton {
             background-color: #353535;
             border: 1px solid #404040;
@@ -1019,27 +977,24 @@ class MaZultLauncher(QWidget):
             color: #FFFFFF;
         }
         
-        /* Play Button (Primary Action) */
         QPushButton#playButton {
-            background-color: #4F2E70; /* Tím */
+            background-color: #4F2E70;
             border: none;
             font-weight: bold;
             font-size: 16px;
         }
         QPushButton#playButton:hover {
-            background-color: #6a4692; /* Tím nhạt hơn khi hover */
+            background-color: #6a4692;
         }
         QPushButton#playButton:pressed {
-            background-color: #3d2358; /* Tím đậm hơn khi nhấn */
+            background-color: #3d2358;
         }
         
-        /* New style for the disabled Play button */
         QPushButton#playButton:disabled {
-            background-color: #2a1c36; /* Tím siêu đen khi bị vô hiệu hóa */
-            color: #A0A0A0; /* Chữ màu xám nhạt */
+            background-color: #2a1c36;
+            color: #A0A0A0;
         }
 
-        /* Settings Button (Gear icon) */
         QPushButton[text="⚙"] {
             border: none;
             background-color: #2D2D2D;
@@ -1048,7 +1003,6 @@ class MaZultLauncher(QWidget):
             background-color: #404040;
         }
         
-        /* Refresh Button (Gear icon) */
         QPushButton[text="↻"] {
             border: none;
             background-color: #2D2D2D;
@@ -1057,7 +1011,6 @@ class MaZultLauncher(QWidget):
             background-color: #404040;
         }
 
-        /* Title and Footer */
         QLabel {
             color: #FFFFFF;
         }
@@ -1066,7 +1019,6 @@ class MaZultLauncher(QWidget):
             font-size: 11px;
         }
         
-        /* List Widget for Versions */
         QListWidget {
             background-color: #2D2D2D;
             border: 1px solid #404040;
@@ -1083,7 +1035,6 @@ class MaZultLauncher(QWidget):
             background-color: #404040;
         }
         
-        /* Group Box for filters */
         QGroupBox {
             font-weight: bold;
             margin-top: 10px;
@@ -1183,9 +1134,7 @@ class MaZultLauncher(QWidget):
                 }
             """)
             self.progress_label.setText("Cancelling...")
-
-            # self.download_thread.wait()
-
+            
             return
 
         username = self.username_combo.currentText()
@@ -1316,17 +1265,14 @@ class LoadingWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.appdata_dir = get_appdata_path()
-
-        self.assets_dir = self.appdata_dir / "assets"
-        self.icon_path = self.assets_dir / "icon.ico"
-        download_icon(self.icon_path)
+        self.icon_path = resource_path("icon.ico")
         
-
         self.setFixedSize(400, 200)
         self.setWindowTitle("Loading...")
         self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint)
         self.setStyleSheet("background-color: #202020;")
-        self.setWindowIcon(QIcon(str(self.icon_path)))
+        if os.path.exists(self.icon_path):
+            self.setWindowIcon(QIcon(str(self.icon_path)))
 
         layout = QVBoxLayout()
         layout.setAlignment(Qt.AlignCenter)
@@ -1454,5 +1400,4 @@ if __name__ == "__main__":
     else: 
         loading_window = LoadingWindow()
         loading_window.start_loading_animation()
-
         sys.exit(app.exec())
