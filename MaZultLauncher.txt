@@ -21,7 +21,7 @@ VSVersionInfo(
          StringStruct('FileDescription', 'Bootstrap Launcher cho minecraft'),
          StringStruct('FileVersion', '1.1.0'),
          StringStruct('InternalName', 'MaZult Launcher'),
-         StringStruct('LegalCopyright', '© 2025 LunarMoonDLCT Dev'),
+         StringStruct('LegalCopyright', '© 2025 LunarMoonDLCT'),
          StringStruct('OriginalFilename', 'MaZultLauncher.exe'),
          StringStruct('ProductName', 'MaZult Launcher'),
          StringStruct('ProductVersion', '1.1.0')])
