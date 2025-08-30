@@ -8,6 +8,7 @@ import psutil
 import requests
 import tempfile
 import zipfile
+import time
 from pathlib import Path
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
@@ -26,9 +27,13 @@ from PySide6.QtCore import (
 import minecraft_launcher_lib
 import datetime
 import uuid
+from pypresence import Presence
+from pypresence.exceptions import InvalidID, PipeClosed
+from packaging import version as packaging
 
 LAUNCHER_VERSION = "1.1.0"
 GITHUB_API_URL = "https://api.github.com/repos/LunarMoonDLCT/MaZult-Launcher/releases/latest"
+DISCORD_CLIENT_ID = "1410269369748946986"
 
 class UpdateChecker(QObject):
     update_available = Signal(str, str)
@@ -95,7 +100,7 @@ class CropBox(QGraphicsRectItem):
 SETTINGS_FILE = get_appdata_path() / "settings.json"
 USERS_FILE = get_appdata_path() / "users.json"
 
-def save_settings(username=None, version_id=None, ram_mb=None, mc_dir=None, filters=None, dev_console=None, hide_on_launch=None, jvm_args=None):
+def save_settings(username=None, version_id=None, ram_mb=None, mc_dir=None, filters=None, dev_console=None, hide_on_launch=None, jvm_args=None, discord_rpc=None):
     data = load_settings()
     if username is not None:
         data["username"] = username
@@ -113,6 +118,8 @@ def save_settings(username=None, version_id=None, ram_mb=None, mc_dir=None, filt
         data["hide_on_launch"] = hide_on_launch
     if jvm_args is not None:
         data["jvm_args"] = jvm_args
+    if discord_rpc is not None:
+        data["discord_rpc"] = discord_rpc
         
     os.makedirs(get_appdata_path(), exist_ok=True)
     with open(SETTINGS_FILE, "w") as f:
@@ -135,7 +142,8 @@ def load_settings():
         },
         "dev_console": False,
         "hide_on_launch": True,
-        "jvm_args": []
+        "jvm_args": [],
+        "discord_rpc": True
     }
 
 def save_users(users):
@@ -330,6 +338,10 @@ class SettingsDialog(QDialog):
         self.hide_on_launch_checkbox.setChecked(not settings.get("hide_on_launch", True))
         dev_layout.addWidget(self.hide_on_launch_checkbox)
 
+        self.discord_rpc_checkbox = QCheckBox("Show status launcher in Discord")
+        self.discord_rpc_checkbox.setChecked(settings.get("discord_rpc", True))
+        dev_layout.addWidget(self.discord_rpc_checkbox)
+
         dev_layout.addStretch()
         dev_tab.setLayout(dev_layout)
         
@@ -359,6 +371,7 @@ class SettingsDialog(QDialog):
         libraries_list.addItem("• requests")
         libraries_list.addItem("• psutil")
         libraries_list.addItem("• packaging")
+        libraries_list.addItem("• pypresence")
         libraries_list.setMinimumHeight(120)
         about_layout.addWidget(libraries_list)
 
@@ -387,6 +400,8 @@ class SettingsDialog(QDialog):
         self.setLayout(layout)
 
     def save_and_close(self):
+        old_settings = load_settings()
+        
         ram_mb = self.ram_slider.value()
         
         mc_dir = self.mc_dir_input.text().strip()
@@ -405,13 +420,25 @@ class SettingsDialog(QDialog):
         dev_console_enabled = self.dev_console_checkbox.isChecked()
         hide_on_launch = not self.hide_on_launch_checkbox.isChecked()
         jvm_args = self.jvm_text_edit.toPlainText().strip().split()
+        discord_rpc_enabled = self.discord_rpc_checkbox.isChecked()
 
-        save_settings(ram_mb=ram_mb, mc_dir=mc_dir, filters=filters, dev_console=dev_console_enabled, hide_on_launch=hide_on_launch, jvm_args=jvm_args)
+        save_settings(
+            ram_mb=ram_mb, 
+            mc_dir=mc_dir, 
+            filters=filters, 
+            dev_console=dev_console_enabled, 
+            hide_on_launch=hide_on_launch, 
+            jvm_args=jvm_args,
+            discord_rpc=discord_rpc_enabled
+        )
         
         if dev_console_enabled and self.parent().dev_console.isHidden():
             self.parent().dev_console.show()
         elif not dev_console_enabled and self.parent().dev_console.isVisible():
             self.parent().dev_console.hide()
+
+        if old_settings.get("discord_rpc") != discord_rpc_enabled:
+            self.parent().reconnect_rpc()
 
         self.refreshVersions.emit()
         self.accept()
@@ -575,6 +602,12 @@ class MinecraftThread(QThread):
 
     def run(self):
         try:
+            if sys.platform.startswith('win32'):
+                java_exe_path = self.command[0]
+                java_w_exe_path = java_exe_path.replace('java.exe', 'javaw.exe')
+                if os.path.exists(java_w_exe_path):
+                    self.command[0] = java_w_exe_path
+                    
             self.process = subprocess.Popen(
                 self.command,
                 cwd=self.minecraft_directory,
@@ -596,6 +629,14 @@ class MaZultLauncher(QWidget):
     def closeEvent(self, event):
         if self.dev_console.isVisible():
             self.dev_console.close()
+        
+        if self.rpc:
+            try:
+                self.rpc.close()
+                print("Disconnected from Discord RPC.")
+            except Exception as e:
+                print(f"Error while closing Discord RPC: {e}")
+
         event.accept()
 
     def open_settings_dialog(self):
@@ -628,6 +669,8 @@ class MaZultLauncher(QWidget):
         selected_version_id = self.version_combo.itemData(index)
         if selected_version_id:
             save_settings(version_id=selected_version_id)
+            if self.rpc:
+                self.update_rpc_menu()
 
     def install_legacy_forge(self, version_id):
         mc_dir = get_minecraft_directory()
@@ -789,6 +832,8 @@ class MaZultLauncher(QWidget):
         if load_settings().get("dev_console", False):
             self.dev_console.show()
 
+        self.rpc = None
+
         self.setWindowTitle("MaZult Launcher")
         self.setWindowIcon(QIcon(str(self.icon_path)))
         self.setMinimumSize(900, 520)
@@ -878,6 +923,87 @@ class MaZultLauncher(QWidget):
         
         main_layout.addLayout(content_layout)
 
+        self.connect_rpc()
+
+    def reconnect_rpc(self):
+        if self.rpc:
+            try:
+                self.rpc.close()
+                print("Disconnected from Discord RPC.")
+            except Exception as e:
+                print(f"Error while closing Discord RPC: {e}")
+        self.rpc = None
+        self.connect_rpc()
+
+    def connect_rpc(self):
+        settings = load_settings()
+        if not settings.get("discord_rpc", True):
+            print("Discord RPC is disabled in settings.")
+            self.rpc = None
+            return
+
+        try:
+            self.rpc = Presence(DISCORD_CLIENT_ID)
+            self.rpc.connect()
+            print("Connected to Discord RPC.")
+            self.update_rpc_menu()
+        except InvalidID:
+            print("Invalid Client ID for Discord RPC. Please check your settings.")
+            self.rpc = None
+        except Exception as e:
+            print(f"Failed to connect to Discord RPC: {e}")
+            self.rpc = None
+
+    def update_rpc_menu(self):
+        if self.rpc:
+            try:
+                selected_version = self.version_combo.currentText().replace("(Installed) ", "")
+                self.rpc.update(
+                    #state=f"",
+                    details="In the menu",
+                    large_image="mzlauncher",
+                    large_text="MaZult Launcher",
+                    small_image="nothing",
+                    small_text="MaZult Launcher",
+                    start=int(time.time())
+                )
+            except PipeClosed:
+                print("Discord pipe closed. Reconnecting...")
+                self.connect_rpc()
+
+    def update_rpc_downloading(self, version_id):
+        if self.rpc:
+            try:
+                self.rpc.update(
+                    state=f"Launching Minecraft {version_id}",
+                    details="Launching...",
+                    large_image="mzlauncher",
+                    large_text="MaZult Launcher",
+                    small_image="nothing",
+                    small_text="MaZult Launcher",
+                    start=int(time.time())
+                )
+            except PipeClosed:
+                print("Discord pipe closed. Reconnecting...")
+                self.connect_rpc()
+
+    def update_rpc_game(self, version_id):
+        if self.rpc:
+            try:
+                self.rpc.update(
+                    state=f"Playing Minecraft {version_id}",
+                    details="In game",
+                    large_image="mzlauncher",
+                    large_text=f"Minecraft {version_id}",
+                    small_image="logo",
+                    small_text="MaZult Launcher",
+                    start=int(time.time())
+                )
+            except PipeClosed:
+                print("Discord pipe closed. Reconnecting...")
+                self.connect_rpc()
+
+
     def on_update_clicked(self):
         if self.update_info:
             latest_version, download_url = self.update_info
@@ -901,6 +1027,7 @@ class MaZultLauncher(QWidget):
             hide_on_launch = settings.get("hide_on_launch", True)
             if hide_on_launch:
                 self.show()
+            self.update_rpc_menu()
 
     def on_minecraft_log(self, text):
         self.dev_console.write(text)
@@ -930,6 +1057,10 @@ class MaZultLauncher(QWidget):
             index = self.version_combo.findData(current_version)
             if index != -1:
                 self.version_combo.setCurrentIndex(index)
+        
+        if self.rpc:
+            self.update_rpc_menu()
+
 
     def load_styles(self):
         return """
@@ -1087,6 +1218,7 @@ class MaZultLauncher(QWidget):
                 options
             )
             print("Launching with command:", " ".join(command))
+            self.update_rpc_game(selected_version_id)
 
             self.play_button.setText("Launching...")
             self.play_button.setEnabled(False)
@@ -1116,6 +1248,7 @@ class MaZultLauncher(QWidget):
         self.play_button.setText("Play")
         self.play_button.setEnabled(True)
         self.play_button.setStyleSheet(self.load_styles())
+        self.update_rpc_menu()
 
     def on_play_clicked(self):
         if self.is_downloading and self.download_thread and self.download_thread.isRunning():
@@ -1195,6 +1328,7 @@ class MaZultLauncher(QWidget):
         self.progress_bar.show()
         self.progress_label.setText("Preparing download...")
         self.progress_bar.setValue(0)
+        self.update_rpc_downloading(selected_version_id)
 
         self.is_downloading = True
         self.play_button.setText("Cancel")
