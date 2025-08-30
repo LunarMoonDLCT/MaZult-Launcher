@@ -1,4 +1,4 @@
-# https://github.com/LunarMoonDLCT/MaZult-Launcher MaZultLauncher
+# MaZultLauncher
 MaZult Launcher is a lightweight and feature-rich Minecraft launcher designed for offline play. It offers a simple, intuitive interface while giving you full control over your game.
 
 ## Key Features
