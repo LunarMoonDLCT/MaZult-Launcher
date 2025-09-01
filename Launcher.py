@@ -84,7 +84,13 @@ def get_appdata_path():
         return Path.home() / ".mazultlauncher"
 
 def resource_path(relative_path):
-    base_path = getattr(sys, '_MEIPASS', os.path.dirname(__file__))
+    if getattr(sys, 'frozen', False):
+        base_path = os.path.dirname(sys.executable)
+            
+    else:
+        # Nếu đang chạy dưới dạng mã nguồn (script)
+        base_path = os.path.dirname(os.path.abspath(__file__))
+
     return os.path.join(base_path, relative_path)
 
 VERSION_FILE = get_appdata_path() / "versions.json"
@@ -1501,37 +1507,46 @@ class LoadingWindow(QWidget):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    
+
     appdata_path = get_appdata_path()
     os.makedirs(appdata_path, exist_ok=True)
     os.chdir(appdata_path)
 
-    script_dir = os.path.dirname(os.path.abspath(__file__))
+    script_dir = Path(__file__).resolve().parent
     
-
     is_windows = sys.platform.startswith('win32')
+    is_linux = sys.platform.startswith('linux')
     is_launcher_arg = "--Launcher" in sys.argv
     
-    if is_windows and not is_launcher_arg:
-        exe_path = os.path.join(script_dir, "MaZultLauncher.exe")
+    print(f"Giá trị của is_launcher_arg: {is_launcher_arg}")
+    print(f"Đường dẫn script: {script_dir}")
+    
+    if (is_windows or is_linux) and not is_launcher_arg:
+        frozen_base_dir = Path(os.path.dirname(sys.executable)).parent
+
+        launcher_name = "MaZult Launcher.exe" if is_windows else "MaZult Launcher"
         
-        if not os.path.exists(exe_path):
-            parent_dir = Path(script_dir).parent
-            exe_path = os.path.join(parent_dir, "MaZultLauncher.exe")
+        exe_path = frozen_base_dir / launcher_name
+        
+        print(f"Updater {exe_path}")
             
-        if os.path.exists(exe_path):
+        if exe_path.exists():
             try:
-                subprocess.Popen([exe_path])
+                print("Found Updater")
+                subprocess.Popen([str(exe_path), "--Launcher"])
                 sys.exit(0)
             except Exception as e:
+                print(f"Error when Launching {e}")
                 loading_window = LoadingWindow()
                 loading_window.start_loading_animation()
                 sys.exit(app.exec())
         else:
+            print("No updater, run default app")
             loading_window = LoadingWindow()
             loading_window.start_loading_animation()
             sys.exit(app.exec())
     else: 
+        print("Mac OS not support")
         loading_window = LoadingWindow()
         loading_window.start_loading_animation()
         sys.exit(app.exec())
