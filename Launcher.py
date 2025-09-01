@@ -88,7 +88,6 @@ def resource_path(relative_path):
         base_path = os.path.dirname(sys.executable)
             
     else:
-        # Nếu đang chạy dưới dạng mã nguồn (script)
         base_path = os.path.dirname(os.path.abspath(__file__))
 
     return os.path.join(base_path, relative_path)
@@ -1549,4 +1548,5 @@ if __name__ == "__main__":
         print("Mac OS not support")
         loading_window = LoadingWindow()
         loading_window.start_loading_animation()
+
         sys.exit(app.exec())
