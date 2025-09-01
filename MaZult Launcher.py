@@ -10,6 +10,9 @@ from PySide6.QtCore import QThread, Signal, Qt
 from PySide6.QtGui import QFont, QIcon
 from pathlib import Path
 
+import ctypes
+from ctypes import windll, wintypes
+
 try:
     from pkg_resources import working_set
 except ImportError:
@@ -29,6 +32,29 @@ LAUNCHER_LUN = "Launcher"
 LAUNCHER_PY = "Launcher.py"
 UPDATER_SCRIPT_NAME = os.path.basename(__file__)
 
+# THAY ĐỔI: Thêm hàm kiểm tra quyền admin và chạy lại với quyền admin
+def is_admin():
+    try:
+        return ctypes.windll.shell32.IsUserAnAdmin()
+    except:
+        return False
+
+def run_as_admin_and_restart():
+    try:
+        script_path = os.path.abspath(sys.argv[0])
+        params = ' '.join([f'"{arg}"' for arg in sys.argv])
+
+        result = ctypes.windll.shell32.ShellExecuteW(None, "runas", script_path, params, None, 1)
+
+        if result <= 32:
+            print(f"Failed to restart with admin rights. ShellExecuteW returned: {result}")
+            return False
+        
+        return True
+    except Exception as e:
+        print(f"An error occurred while trying to elevate permissions: {e}")
+        return False
+
 class GitHubAsset:
     def __init__(self, data):
         self.name = data.get("name", "")
@@ -44,6 +70,8 @@ class UpdateWorker(QThread):
     status_updated = Signal(str)
     progress_updated = Signal(int, int, int)
     update_success = Signal()
+    # THAY ĐỔI: Thêm tín hiệu mới để yêu cầu quyền admin
+    request_admin_privileges = Signal()
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -51,9 +79,6 @@ class UpdateWorker(QThread):
 
     def run(self):
         try:
-            self.cleanup()
-            os.makedirs(TEMP_UPDATE_DIR, exist_ok=True)
-
             self.status_updated.emit("Checking for updates...")
             current_version = self.get_current_version()
             
@@ -79,8 +104,20 @@ class UpdateWorker(QThread):
             
             if latest_version == current_version:
                 self.status_updated.emit("You are using the latest version. Starting...")
+                self.cleanup()
                 self.update_success.emit()
                 return
+            
+            # THAY ĐỔI: Kiểm tra quyền admin chỉ khi có bản cập nhật
+            if sys.platform.startswith("win") and getattr(sys, 'frozen', False):
+                if not is_admin():
+                    self.status_updated.emit("Update available. Requesting admin privileges...")
+                    self.request_admin_privileges.emit()
+                    return # Ngừng tiến trình hiện tại và chờ được chạy lại
+
+            # Nếu đã có quyền hoặc không cần quyền (trên Linux/macOS) thì tiếp tục
+            self.cleanup()
+            os.makedirs(TEMP_UPDATE_DIR, exist_ok=True)
             
             download_url, total_size = self.get_download_url(latest_release)
             
@@ -199,7 +236,6 @@ class UpdateWorker(QThread):
             else:
                 shutil.move(s, d)
 
-        # Chức năng cài đặt Pip chỉ dành cho macOS
         if sys.platform.startswith("darwin"):
             requirements_file = os.path.join(dest_dir, "requirements.txt")
             if os.path.exists(requirements_file):
@@ -272,6 +308,8 @@ class UpdaterApp(QWidget):
         self.worker.status_updated.connect(self.update_status)
         self.worker.progress_updated.connect(self.update_progress)
         self.worker.update_success.connect(self.on_update_success)
+        # THAY ĐỔI: Kết nối tín hiệu mới
+        self.worker.request_admin_privileges.connect(self.handle_admin_request)
         self.worker.start()
 
     def update_status(self, message):
@@ -296,7 +334,7 @@ class UpdaterApp(QWidget):
                 launcher_path = os.path.join(MAIN_APP_DIR, 'bin', LAUNCHER_EXE)
                 command = f'start "" "{launcher_path}" --Launcher'
             elif is_linux:
-                launcher_path = os.path.join(MAIN_APP_DIR, 'bin', LAUNCHER_LIN)
+                launcher_path = os.path.join(MAIN_APP_DIR, 'bin', LAUNCHER_LUN)
                 command = [str(launcher_path), '--Launcher']
             elif is_macos:
                 launcher_path = os.path.join(MAIN_APP_DIR, LAUNCHER_PY)
@@ -314,6 +352,15 @@ class UpdaterApp(QWidget):
             QMessageBox.critical(self, "Error", f"Could not launch the main application: {e}")
 
         QApplication.quit()
+
+    def handle_admin_request(self):
+        self.update_status("Please grant admin privileges to continue the update.")
+        if run_as_admin_and_restart():
+            QApplication.quit()
+        else:
+            QMessageBox.critical(self, "ERROR in Downloading update", "Please grant admin privileges to continue the update.")
+            QApplication.quit()
+
 
     def closeEvent(self, event):
         if self.worker.isRunning():
