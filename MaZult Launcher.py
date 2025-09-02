@@ -32,7 +32,6 @@ LAUNCHER_LUN = "Launcher"
 LAUNCHER_PY = "Launcher.py"
 UPDATER_SCRIPT_NAME = os.path.basename(__file__)
 
-# THAY ĐỔI: Thêm hàm kiểm tra quyền admin và chạy lại với quyền admin
 def is_admin():
     try:
         return ctypes.windll.shell32.IsUserAnAdmin()
@@ -70,7 +69,6 @@ class UpdateWorker(QThread):
     status_updated = Signal(str)
     progress_updated = Signal(int, int, int)
     update_success = Signal()
-    # THAY ĐỔI: Thêm tín hiệu mới để yêu cầu quyền admin
     request_admin_privileges = Signal()
     
     def __init__(self, parent=None):
@@ -107,15 +105,14 @@ class UpdateWorker(QThread):
                 self.cleanup()
                 self.update_success.emit()
                 return
-            
-            # THAY ĐỔI: Kiểm tra quyền admin chỉ khi có bản cập nhật
+
             if sys.platform.startswith("win") and getattr(sys, 'frozen', False):
                 if not is_admin():
                     self.status_updated.emit("Update available. Requesting admin privileges...")
                     self.request_admin_privileges.emit()
-                    return # Ngừng tiến trình hiện tại và chờ được chạy lại
+                    return 
 
-            # Nếu đã có quyền hoặc không cần quyền (trên Linux/macOS) thì tiếp tục
+
             self.cleanup()
             os.makedirs(TEMP_UPDATE_DIR, exist_ok=True)
             
@@ -308,7 +305,6 @@ class UpdaterApp(QWidget):
         self.worker.status_updated.connect(self.update_status)
         self.worker.progress_updated.connect(self.update_progress)
         self.worker.update_success.connect(self.on_update_success)
-        # THAY ĐỔI: Kết nối tín hiệu mới
         self.worker.request_admin_privileges.connect(self.handle_admin_request)
         self.worker.start()
 
@@ -332,7 +328,7 @@ class UpdaterApp(QWidget):
 
             if is_windows:
                 launcher_path = os.path.join(MAIN_APP_DIR, 'bin', LAUNCHER_EXE)
-                command = f'start "" "{launcher_path}" --Launcher'
+                
             elif is_linux:
                 launcher_path = os.path.join(MAIN_APP_DIR, 'bin', LAUNCHER_LUN)
                 command = [str(launcher_path), '--Launcher']
@@ -344,7 +340,7 @@ class UpdaterApp(QWidget):
                 raise FileNotFoundError(f"Launcher file not found: {launcher_path}")
             
             if is_windows:
-                subprocess.Popen(command, shell=True)
+                subprocess.Popen([launcher_path, '--Launcher'])
             else: # Linux, macOS
                 subprocess.Popen(command, start_new_session=True)
             
