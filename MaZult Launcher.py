@@ -28,7 +28,6 @@ else:
 CURRENT_VERSION_FILE = os.path.join(MAIN_APP_DIR, 'app', 'app.json')
 TEMP_UPDATE_DIR = os.path.join(MAIN_APP_DIR, 'temp_update')
 LAUNCHER_EXE = "Launcher.exe"
-LAUNCHER_LUN = "Launcher"
 LAUNCHER_PY = "Launcher.py"
 UPDATER_SCRIPT_NAME = os.path.basename(__file__)
 
@@ -46,12 +45,10 @@ def run_as_admin_and_restart():
         result = ctypes.windll.shell32.ShellExecuteW(None, "runas", script_path, params, None, 1)
 
         if result <= 32:
-            print(f"Failed to restart with admin rights. ShellExecuteW returned: {result}")
             return False
         
         return True
     except Exception as e:
-        print(f"An error occurred while trying to elevate permissions: {e}")
         return False
 
 class GitHubAsset:
@@ -85,7 +82,6 @@ class UpdateWorker(QThread):
                 latest_release = self.get_latest_release()
             except requests.exceptions.RequestException as e:
                 self.status_updated.emit("Cannot connect to update server. Starting Launcher...")
-                print(f"Connection error: {e}. Skipping update.")
                 self.cleanup()
                 self.update_success.emit()
                 return
@@ -111,7 +107,6 @@ class UpdateWorker(QThread):
                     self.status_updated.emit("Update available. Requesting admin privileges...")
                     self.request_admin_privileges.emit()
                     return 
-
 
             self.cleanup()
             os.makedirs(TEMP_UPDATE_DIR, exist_ok=True)
@@ -155,7 +150,7 @@ class UpdateWorker(QThread):
             with open(CURRENT_VERSION_FILE, 'w') as f:
                 json.dump({"version": new_version}, f)
         except Exception as e:
-            print(f"Error updating app.json file: {e}")
+            pass
 
     def get_latest_release(self):
         headers = {"User-Agent": "AutoUpdater"}
@@ -167,9 +162,7 @@ class UpdateWorker(QThread):
         os_name = sys.platform
         if os_name.startswith("win"):
             tag = "-Portable-Win.zip"
-        elif os_name.startswith("linux"):
-            tag = "-Portable-Lin.zip"
-        else: # macOS
+        else:
             tag = "-Universal.zip"
 
         for asset in release.assets:
@@ -192,7 +185,6 @@ class UpdateWorker(QThread):
         self.progress_updated.emit(total_size, total_size, 100) 
             
     def check_installed_packages(self, requirements_file):
-        """Checks if packages in requirements.txt are installed."""
         missing_packages = []
         if working_set is None:
             return ["all"]
@@ -206,34 +198,41 @@ class UpdateWorker(QThread):
                 if req.lower() not in installed_packages:
                     missing_packages.append(req)
         except Exception as e:
-            print(f"Error checking packages: {e}. Assuming installation is needed.")
             return ["all"]
         
         return missing_packages
 
     def extract_and_install(self, zip_file_path, dest_dir):
         self.status_updated.emit("Extracting and installing...")
+        
+        bin_dir = os.path.join(dest_dir, 'bin')
+        if os.path.exists(bin_dir) and os.path.isdir(bin_dir):
+            self.status_updated.emit("Removing old bin directory...")
+            try:
+                shutil.rmtree(bin_dir)
+            except OSError as e:
+                self.status_updated.emit("Failed to remove old bin. Update may be incomplete.")
+
         with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
             zip_ref.extractall(TEMP_UPDATE_DIR)
         
-        for item in os.listdir(TEMP_UPDATE_DIR):
-            s = os.path.join(TEMP_UPDATE_DIR, item)
-            d = os.path.join(dest_dir, item)
-            
-            if os.path.basename(s) == UPDATER_SCRIPT_NAME:
+        for item_name in os.listdir(TEMP_UPDATE_DIR):
+            temp_item_path = os.path.join(TEMP_UPDATE_DIR, item_name)
+            dest_item_path = os.path.join(dest_dir, item_name)
+
+            if os.path.basename(temp_item_path) == UPDATER_SCRIPT_NAME:
                 continue
 
-            if os.path.isdir(s):
-                if os.path.exists(d):
-                    for sub_item in os.listdir(s):
-                        shutil.move(os.path.join(s, sub_item), d)
-                    shutil.rmtree(s)
-                else:
-                    shutil.move(s, d)
+            if os.path.isdir(temp_item_path):
+                if os.path.exists(dest_item_path):
+                    shutil.rmtree(dest_item_path)
+                shutil.move(temp_item_path, dest_item_path)
             else:
-                shutil.move(s, d)
+                if os.path.exists(dest_item_path):
+                    os.remove(dest_item_path)
+                shutil.move(temp_item_path, dest_item_path)
 
-        if sys.platform.startswith("darwin"):
+        if not sys.platform.startswith("win"):
             requirements_file = os.path.join(dest_dir, "requirements.txt")
             if os.path.exists(requirements_file):
                 missing_packages = self.check_installed_packages(requirements_file)
@@ -245,13 +244,11 @@ class UpdateWorker(QThread):
                             check=True
                         )
                     except subprocess.CalledProcessError as e:
-                        print(f"Error installing libraries: {e}")
                         self.status_updated.emit("Could not install libraries. Continuing startup...")
                 else:
                     self.status_updated.emit("Libraries are already installed. Continuing startup...")
-                    print("All libraries are installed. Skipping pip command.")
             else:
-                print("requirements.txt not found, skipping library installation.")
+                pass
 
     def cleanup(self):
         self.status_updated.emit("Cleaning up temporary files...")
@@ -259,7 +256,7 @@ class UpdateWorker(QThread):
             try:
                 shutil.rmtree(TEMP_UPDATE_DIR)
             except OSError as e:
-                print(f"Error deleting temporary directory: {e}")
+                pass
 
 class UpdaterApp(QWidget):
     def __init__(self):
@@ -320,29 +317,29 @@ class UpdaterApp(QWidget):
         self.update_status("Update successful. Starting Launcher...")
         try:
             is_windows = sys.platform.startswith("win")
-            is_linux = sys.platform.startswith("linux")
-            is_macos = sys.platform.startswith("darwin")
-
+            
             launcher_path = ""
             command = None
 
             if is_windows:
                 launcher_path = os.path.join(MAIN_APP_DIR, 'bin', LAUNCHER_EXE)
-                
-            elif is_linux:
-                launcher_path = os.path.join(MAIN_APP_DIR, 'bin', LAUNCHER_LUN)
-                command = [str(launcher_path), '--Launcher']
-            elif is_macos:
+                try:
+                    subprocess.Popen([launcher_path, '--Launcher'])
+                except (FileNotFoundError, OSError) as e:
+                    app_dir = os.path.join(MAIN_APP_DIR, 'app')
+                    if os.path.exists(app_dir):
+                        shutil.rmtree(app_dir)
+                    QMessageBox.critical(self, "Lỗi khi chạy Launcher", "Launcher đã cài đặt không thể chạy. Đã xóa thư mục 'app'. Vui lòng khởi chạy lại.")
+                    QApplication.quit()
+                    return
+
+            else:
                 launcher_path = os.path.join(MAIN_APP_DIR, LAUNCHER_PY)
                 command = [sys.executable, launcher_path, '--Launcher']
-
+                subprocess.Popen(command, start_new_session=True)
+            
             if not os.path.exists(launcher_path):
                 raise FileNotFoundError(f"Launcher file not found: {launcher_path}")
-            
-            if is_windows:
-                subprocess.Popen([launcher_path, '--Launcher'])
-            else: # Linux, macOS
-                subprocess.Popen(command, start_new_session=True)
             
         except (FileNotFoundError, OSError) as e:
             QMessageBox.critical(self, "Error", f"Could not launch the main application: {e}")
@@ -356,7 +353,6 @@ class UpdaterApp(QWidget):
         else:
             QMessageBox.critical(self, "ERROR in Downloading update", "Please grant admin privileges to continue the update.")
             QApplication.quit()
-
 
     def closeEvent(self, event):
         if self.worker.isRunning():
