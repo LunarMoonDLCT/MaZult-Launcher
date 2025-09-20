@@ -5,13 +5,16 @@ import zipfile
 import requests
 import json
 import subprocess
+import time
 from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout, QProgressBar, QLabel, QMessageBox
 from PySide6.QtCore import QThread, Signal, Qt
 from PySide6.QtGui import QFont, QIcon
 from pathlib import Path
 
-import ctypes
-from ctypes import windll, wintypes
+# Import Windows-specific libraries only on Windows
+if sys.platform.startswith("win"):
+    import ctypes
+    from ctypes import windll, wintypes
 
 try:
     from pkg_resources import working_set
@@ -32,24 +35,72 @@ LAUNCHER_PY = "Launcher.py"
 UPDATER_SCRIPT_NAME = os.path.basename(__file__)
 
 def is_admin():
+    if not sys.platform.startswith("win"):
+        return True
     try:
         return ctypes.windll.shell32.IsUserAnAdmin()
     except:
         return False
 
 def run_as_admin_and_restart():
+    if not sys.platform.startswith("win"):
+        return False
     try:
         script_path = os.path.abspath(sys.argv[0])
         params = ' '.join([f'"{arg}"' for arg in sys.argv])
-
-        result = ctypes.windll.shell32.ShellExecuteW(None, "runas", script_path, params, None, 1)
-
-        if result <= 32:
-            return False
-        
+        ctypes.windll.shell32.ShellExecuteW(None, "runas", script_path, params, None, 1)
         return True
     except Exception as e:
         return False
+
+def run_as_original_user(command_line):
+    """
+    Launches a process with the token of the original user on Windows.
+    This is necessary to de-elevate privileges after an admin-required update.
+    """
+    if not sys.platform.startswith("win"):
+        return subprocess.Popen(command_line, start_new_session=True)
+
+    try:
+        # Define necessary Windows API types
+        PROCESS_ALL_ACCESS = 0x1F0FFF
+        TOKEN_ALL_ACCESS = 0xF01FF
+        
+        # Get the ID of the active console session
+        session_id = windll.kernel32.WTSGetActiveConsoleSessionId()
+        
+        # Get the user token for that session
+        user_token = wintypes.HANDLE()
+        if not windll.wtsapi32.WTSQueryUserToken(session_id, ctypes.byref(user_token)):
+            raise ctypes.WinError()
+
+        # Create a new process with the user's token
+        startup_info = wintypes._STARTUPINFOA()
+        startup_info.cb = ctypes.sizeof(startup_info)
+        process_info = wintypes.PROCESS_INFORMATION()
+
+        command_str = " ".join(command_line)
+
+        if not windll.advapi32.CreateProcessAsUserA(
+            user_token,
+            None,
+            command_str.encode('utf-8'),
+            None,
+            None,
+            False,
+            0,
+            None,
+            None,
+            ctypes.byref(startup_info),
+            ctypes.byref(process_info)
+        ):
+            raise ctypes.WinError()
+            
+        return process_info
+
+    except Exception as e:
+        print(f"Failed to de-elevate privileges: {e}. Running with current rights.")
+        return subprocess.Popen(command_line, start_new_session=True)
 
 class GitHubAsset:
     def __init__(self, data):
@@ -319,32 +370,50 @@ class UpdaterApp(QWidget):
             is_windows = sys.platform.startswith("win")
             
             launcher_path = ""
-            command = None
-
+            
             if is_windows:
                 launcher_path = os.path.join(MAIN_APP_DIR, 'bin', LAUNCHER_EXE)
                 try:
-                    subprocess.Popen([launcher_path, '--Launcher'])
+                    run_as_original_user([launcher_path, '--Launcher'])
                 except (FileNotFoundError, OSError) as e:
-                    app_dir = os.path.join(MAIN_APP_DIR, 'app')
-                    if os.path.exists(app_dir):
-                        shutil.rmtree(app_dir)
-                    QMessageBox.critical(self, "Lỗi khi chạy Launcher", "Launcher đã cài đặt không thể chạy. Đã xóa thư mục 'app'. Vui lòng khởi chạy lại.")
+                    self.delete_app_directory()
+                    QMessageBox.critical(self, "ERROR", "Failed to start the application. Please restart the launcher to apply changes.")
                     QApplication.quit()
                     return
 
             else:
-                launcher_path = os.path.join(MAIN_APP_DIR, LAUNCHER_PY)
+                launcher_path = os.path.join(MAIN_APP_DIR, 'bin', LAUNCHER_PY)
                 command = [sys.executable, launcher_path, '--Launcher']
-                subprocess.Popen(command, start_new_session=True)
+                try:
+                    subprocess.Popen(command, start_new_session=True)
+                except (FileNotFoundError, OSError) as e:
+                    self.delete_app_directory()
+                    QMessageBox.critical(self, "ERROR", "Failed to start the application. Please restart the launcher to apply changes.")
+                    QApplication.quit()
+                    return
             
             if not os.path.exists(launcher_path):
                 raise FileNotFoundError(f"Launcher file not found: {launcher_path}")
             
         except (FileNotFoundError, OSError) as e:
+            self.delete_app_directory()
             QMessageBox.critical(self, "Error", f"Could not launch the main application: {e}")
-
+            QApplication.quit()
+            return
+        
         QApplication.quit()
+    
+    def delete_app_directory(self):
+        app_dir = os.path.join(MAIN_APP_DIR, 'app')
+        if os.path.exists(app_dir):
+            try:
+                shutil.rmtree(app_dir)
+            except OSError as e:
+                time.sleep(1)
+                try:
+                    shutil.rmtree(app_dir)
+                except Exception as e:
+                    pass
 
     def handle_admin_request(self):
         self.update_status("Please grant admin privileges to continue the update.")
