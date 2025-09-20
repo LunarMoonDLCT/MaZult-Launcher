@@ -377,7 +377,7 @@ class UpdaterApp(QWidget):
                     run_as_original_user([launcher_path, '--Launcher'])
                 except (FileNotFoundError, OSError) as e:
                     self.delete_app_directory()
-                    QMessageBox.critical(self, "ERROR", "Failed to start the application. Please restart the launcher to apply changes.")
+                    QMessageBox.critical(self, "ERROR", "Failed to start the application. Please remove the app.json file to fix this error.")
                     QApplication.quit()
                     return
 
