@@ -31,7 +31,8 @@ from pypresence import Presence
 from pypresence.exceptions import InvalidID, PipeClosed
 from packaging import version as packaging
 
-LAUNCHER_VERSION = "1.104.98.1"
+
+LAUNCHER_VERSION = "1.105.27.9"
 GITHUB_API_URL = "https://api.github.com/repos/LunarMoonDLCT/MaZult-Launcher/releases/latest"
 DISCORD_CLIENT_ID = "1410269369748946986"
 
@@ -88,6 +89,7 @@ def resource_path(relative_path):
         base_path = os.path.dirname(sys.executable)
             
     else:
+        # Nếu đang chạy dưới dạng mã nguồn (script)
         base_path = os.path.dirname(os.path.abspath(__file__))
 
     return os.path.join(base_path, relative_path)
@@ -125,6 +127,7 @@ def save_settings(username=None, version_id=None, ram_mb=None, mc_dir=None, filt
         data["jvm_args"] = jvm_args
     if discord_rpc is not None:
         data["discord_rpc"] = discord_rpc
+
         
     os.makedirs(get_appdata_path(), exist_ok=True)
     with open(SETTINGS_FILE, "w") as f:
@@ -145,6 +148,8 @@ def load_settings():
             "alpha": False,
             "installed": True
         },
+        "window_width": 925, 
+        "window_height": 530,
         "dev_console": False,
         "hide_on_launch": True,
         "jvm_args": [],
@@ -202,12 +207,20 @@ def get_installed_versions():
 
 def get_available_versions(filters, offline=False):
     versions = []
+    latest_release_id = None
     try:
         if offline:
             raise Exception("Forced offline")
         mc_versions = minecraft_launcher_lib.utils.get_version_list()
         serializable_versions = []
+        
+
         for v in mc_versions:
+            if v.get('type') == 'release' and latest_release_id is None:
+                # Phiên bản đầu tiên trong danh sách (thường là mới nhất) có type='release'
+                latest_release_id = v['id']        
+        
+        
             if isinstance(v.get('releaseTime'), datetime.datetime):
                 v['releaseTime'] = v['releaseTime'].isoformat()
             serializable_versions.append(v)
@@ -221,10 +234,16 @@ def get_available_versions(filters, offline=False):
             try:
                 with open(VERSION_FILE, "r") as f:
                     mc_versions = json.load(f)
+                    
+                # Cần tìm latest_release_id từ cache nếu offline
+                for v in mc_versions:
+                    if v.get('type') == 'release' and latest_release_id is None:
+                        latest_release_id = v['id']
             except Exception:
-                return [("Offline: No cached versions", "")]
+                return [("Offline: No cached versions", "")], None 
         else:
-            return [("Offline: No cached versions", "")]
+            return [("Offline: No cached versions", "")], None 
+
 
     filtered_versions = []
     version_types = {
@@ -239,7 +258,7 @@ def get_available_versions(filters, offline=False):
             label = f"{v.get('type', 'release').capitalize()} - {v['id']}"
             filtered_versions.append((label, v['id']))
     
-    return filtered_versions
+    return filtered_versions, latest_release_id
 
 def get_mojang_uuid(username):
     try:
@@ -410,8 +429,17 @@ class SettingsDialog(QDialog):
         ram_mb = self.ram_slider.value()
         
         mc_dir = self.mc_dir_input.text().strip()
-        if not os.path.exists(mc_dir):
-            QMessageBox.warning(self, "Invalid Path", "The specified Minecraft directory does not exist.")
+        if mc_dir:
+            mc_path = Path(mc_dir)
+            if not mc_path.exists():
+                try:
+                    os.makedirs(mc_path)
+                    print(f"Created new Minecraft directory: {mc_path}")
+                except Exception as e:
+                    QMessageBox.critical(self, "Creation Failed", f"Failed to create directory: {mc_dir}\nError: {e}")
+                    return
+        else:
+            QMessageBox.warning(self, "Invalid Path", "Minecraft directory path cannot be empty.")
             return
         
         filters = {
@@ -421,6 +449,8 @@ class SettingsDialog(QDialog):
             "alpha": self.alpha_checkbox.isChecked(),
             "installed": self.installed_checkbox.isChecked(),
         }
+        
+
         
         dev_console_enabled = self.dev_console_checkbox.isChecked()
         hide_on_launch = not self.hide_on_launch_checkbox.isChecked()
@@ -434,6 +464,7 @@ class SettingsDialog(QDialog):
             dev_console=dev_console_enabled, 
             hide_on_launch=hide_on_launch, 
             jvm_args=jvm_args,
+
             discord_rpc=discord_rpc_enabled
         )
         
@@ -833,6 +864,8 @@ class MaZultLauncher(QWidget):
         self.download_thread = None
         self.update_info = update_info
 
+
+
         self.dev_console = DevConsole(self, styles=self.load_styles())
         if load_settings().get("dev_console", False):
             self.dev_console.show()
@@ -846,6 +879,11 @@ class MaZultLauncher(QWidget):
         main_layout = QHBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         
+        self.temp_width = 0
+        self.temp_height = 0
+
+
+
         sidebar = QVBoxLayout()
         sidebar.setAlignment(Qt.AlignmentFlag.AlignTop)
         sidebar.setSpacing(20)
@@ -1032,6 +1070,8 @@ class MaZultLauncher(QWidget):
             hide_on_launch = settings.get("hide_on_launch", True)
             if hide_on_launch:
                 self.show()
+                if self.temp_width > self.minimumWidth() and self.temp_height > self.minimumHeight():
+                    self.resize(self.temp_width, self.temp_height)
             self.update_rpc_menu()
 
     def on_minecraft_log(self, text):
@@ -1045,10 +1085,66 @@ class MaZultLauncher(QWidget):
         
         filters = settings.get("filters", {})
         show_installed = filters.get("installed", True)
-
+        
         installed_versions = get_installed_versions()
-        available_versions = get_available_versions(filters)
+        installed_versions_set = set(installed_versions)
+        available_versions, latest_release_id = get_available_versions(filters)
+        
+        
+        
+        # 1. Thêm tùy chọn "Latest Release"
+        if latest_release_id:
+            display_name = f"Latest Release ({latest_release_id})"
+            
+            # Kiểm tra nếu phiên bản mới nhất đã được cài đặt
+            if latest_release_id in installed_versions_set: 
+                display_name = f"(Installed) Latest Release ({latest_release_id})"
+            
+            self.version_combo.addItem(display_name, latest_release_id)
+            
+            # Cập nhật setting nếu phiên bản mới nhất là phiên bản mặc định
+            if current_version is None:
+                current_version = latest_release_id
+        
 
+        if show_installed:
+            for version in installed_versions:
+                # Bỏ qua Latest Release ID vì đã thêm ở B1
+                if version == latest_release_id: 
+                    continue
+                
+                self.version_combo.addItem(f"(Installed) {version}", version)
+        
+        # 3. Thêm các phiên bản có sẵn (releases/snapshots/...) 
+        for label, version_id in available_versions:
+            
+            # BỎ QUA nếu nó là Latest Release ID VÀ nó đã được cài đặt
+            # (Giữ nguyên logic lần trước để tạo ra 2 mục)
+            if version_id == latest_release_id:
+                # THÊM NHÃN (INSTALLED) cho mục 'Release - 1.21.10'
+                if version_id in installed_versions_set:
+                    label = f"(Installed) {label}"
+                self.version_combo.addItem(label, version_id)
+                continue
+            
+            # Chỉ thêm các phiên bản CHƯA cài đặt (khác Latest Release ID)
+            if version_id not in installed_versions_set:
+                self.version_combo.addItem(label, version_id)
+            else:
+                # THÊM NHÃN (INSTALLED) cho các phiên bản đã cài đặt còn lại (nếu bạn muốn chúng xuất hiện 2 lần)
+                # Tuy nhiên, theo yêu cầu của bạn, chúng ta chỉ cần thêm nhãn cho 1.21.10. 
+                # Các phiên bản khác đã được thêm ở B2.
+                pass 
+                
+        # 4. Thiết lập phiên bản đã chọn trước đó hoặc phiên bản mới nhất
+        if current_version:
+            index = self.version_combo.findData(current_version)
+            if index != -1:
+                self.version_combo.setCurrentIndex(index)
+                
+                
+                
+                
         if show_installed:
             for version in installed_versions:
                 self.version_combo.addItem(f"(Installed) {version}", version)
@@ -1062,6 +1158,8 @@ class MaZultLauncher(QWidget):
             index = self.version_combo.findData(current_version)
             if index != -1:
                 self.version_combo.setCurrentIndex(index)
+                
+        
         
         if self.rpc:
             self.update_rpc_menu()
@@ -1182,6 +1280,65 @@ class MaZultLauncher(QWidget):
             padding-right: 10px;
             padding-top: -5px;
         }
+
+        QDialog {
+            background-color: #2D2D2D;
+        }
+
+        QTabWidget::pane {
+            border: 1px solid #404040;
+            border-top: none;
+            background-color: #2D2D2D;
+            border-bottom-left-radius: 4px;
+            border-bottom-right-radius: 4px;
+        }
+
+        QTabBar::tab {
+            background-color: #252525;
+            color: #A0A0A0;
+            border: 1px solid #404040;
+            border-bottom: none;
+            padding: 2px 4px;
+            border-top-left-radius: 4px;
+            border-top-right-radius: 4px;
+            margin-right: 2px;
+        }
+
+        QTabBar::tab:hover {
+            background-color: #353535;
+            color: #E0E0E0;
+        }
+
+        QTabBar::tab:selected {
+            background-color: #2D2D2D;
+            color: #FFFFFF;
+            border-bottom: 1px solid #2D2D2D;
+        }
+
+        QCheckBox {
+            spacing: 5px;
+        }
+        QCheckBox::indicator {
+            width: 18px;
+            height: 18px;
+            border: 1px solid #6a4692;
+            border-radius: 4px;
+            background-color: #353535;
+        }
+        QCheckBox::indicator:hover {
+            border: 1px solid #805ea8;
+        }
+        QCheckBox::indicator:checked {
+            background-color: #6a4692;
+            image: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiIHdpZHRoPSIxOHB4IiBoZWlnaHQ9IjE4cHgiPjxwYXRoIGQ9Ik0wIDBoMjR2MjRIMHoiIGZpbGw9Im5vbmUiLz48cGF0aCBkPSJNOSAxNi4xN0w0LjgzIDEyLjAxbC0xLjQxIDEuNDFMMTkgMTlsMi0yTDEwLjQxIDcuNTlsLTEuNDEgMS40MUw5IDE2LjE3eiIvPjwvc3ZnPg==);
+        }
+        QCheckBox::indicator:disabled {
+            background-color: #404040;
+            border: 1px solid #505050;
+        }
+        QCheckBox:disabled {
+            color: #A0A0A0;
+        }
         """
 
     def on_set_status(self, text):
@@ -1207,6 +1364,8 @@ class MaZultLauncher(QWidget):
         )
 
     def after_download(self, selected_version_id, options, settings):
+        print("[DEBUG] after_download triggered")
+
         self.is_downloading = False
         self.progress_label.hide()
         self.progress_bar.hide()
@@ -1215,8 +1374,19 @@ class MaZultLauncher(QWidget):
             print("Download process was cancelled.")
             self.reset_after_cancel()
             return
-            
+
         try:
+            version_dir = os.path.join(get_minecraft_directory(), "versions", selected_version_id)
+            jar_path = os.path.join(version_dir, f"{selected_version_id}.jar")
+
+            # ✅ Chờ file jar thực sự tồn tại (tránh việc lib tự tải lại)
+            for _ in range(10):
+                if os.path.exists(jar_path):
+                    break
+                print("[DEBUG] Waiting for jar to exist...")
+                time.sleep(0.5)
+
+            # Tạo command launch sau khi chắc chắn đã có file
             command = minecraft_launcher_lib.command.get_minecraft_command(
                 selected_version_id,
                 get_minecraft_directory(),
@@ -1225,6 +1395,7 @@ class MaZultLauncher(QWidget):
             print("Launching with command:", " ".join(command))
             self.update_rpc_game(selected_version_id)
 
+            # Cập nhật giao diện
             self.play_button.setText("Launching...")
             self.play_button.setEnabled(False)
             self.play_button.setStyleSheet(self.load_styles())
@@ -1232,12 +1403,17 @@ class MaZultLauncher(QWidget):
             hide_on_launch = settings.get("hide_on_launch", True)
             if hide_on_launch:
                 self.hide()
-                
+                self.temp_width = self.width()
+                self.temp_height = self.height()
+            
+
+            # ✅ Chỉ khởi chạy Minecraft, không cài lại gì nữa
             self.minecraft_thread = MinecraftThread(command, get_minecraft_directory(), self)
             self.minecraft_thread.finished_signal.connect(self.on_minecraft_finished)
             self.minecraft_thread.log_signal.connect(self.on_minecraft_log)
             self.dev_console.set_kill_button_enabled(True)
             self.minecraft_thread.start()
+
         except Exception as e:
             QMessageBox.critical(self, "Launch Error", f"Failed to launch Minecraft:\n{e}")
             self.dev_console.set_kill_button_enabled(False)
@@ -1245,6 +1421,12 @@ class MaZultLauncher(QWidget):
             self.play_button.setEnabled(True)
             self.play_button.setStyleSheet(self.load_styles())
             self.show()
+
+        # ✅ Cleanup thread đúng lúc
+        if self.download_thread:
+            self.download_thread.deleteLater()
+            self.download_thread = None
+
 
     def reset_after_cancel(self):
         self.is_downloading = False
@@ -1256,6 +1438,7 @@ class MaZultLauncher(QWidget):
         self.update_rpc_menu()
 
     def on_play_clicked(self):
+        print("[DEBUG] Thread created")
         if self.is_downloading and self.download_thread and self.download_thread.isRunning():
             print("Download canceled by user.")
             self.download_thread.cancel()
@@ -1350,6 +1533,9 @@ class MaZultLauncher(QWidget):
             lambda success: self.after_download(selected_version_id, options, settings)
         )
         self.download_thread.start()
+    
+    
+
 
 class DownloadThread(QThread):
     progress_signal = Signal(str, int, int, float)
@@ -1359,6 +1545,7 @@ class DownloadThread(QThread):
     finished_signal = Signal(bool) 
 
     def __init__(self, version_id, minecraft_directory):
+        print("[DEBUG] DownloadThread init")
         super().__init__()
         self.version_id = version_id
         self.minecraft_directory = minecraft_directory
@@ -1369,6 +1556,7 @@ class DownloadThread(QThread):
         self._cancelled = True
         
     def run(self):
+        print("[DEBUG] DownloadThread run start")
         try:
             minecraft_launcher_lib.install.install_minecraft_version(
                 self.version_id,
@@ -1545,8 +1733,6 @@ if __name__ == "__main__":
             loading_window.start_loading_animation()
             sys.exit(app.exec())
     else: 
-        print("Mac OS not support")
         loading_window = LoadingWindow()
         loading_window.start_loading_animation()
-
         sys.exit(app.exec())

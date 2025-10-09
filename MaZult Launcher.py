@@ -189,10 +189,10 @@ class UpdateWorker(QThread):
             try:
                 with open(CURRENT_VERSION_FILE, 'r') as f:
                     data = json.load(f)
-                    return data.get("version", "0.0.0")
+                    return data.get("version", "0.0.0.0")
             except (IOError, json.JSONDecodeError):
-                return "0.0.0"
-        return "0.0.0"
+                return "0.0.0.0"
+        return "0.0.0.0"
     
     def update_local_version(self, new_version):
         try:
@@ -376,9 +376,7 @@ class UpdaterApp(QWidget):
                 try:
                     run_as_original_user([launcher_path, '--Launcher'])
                 except (FileNotFoundError, OSError) as e:
-                    self.delete_app_directory()
-                    QMessageBox.critical(self, "ERROR", "Failed to start the application. Please remove the app.json file to fix this error.")
-                    QApplication.quit()
+                    self.handle_startup_error("Failed to start the application.")
                     return
 
             else:
@@ -387,40 +385,34 @@ class UpdaterApp(QWidget):
                 try:
                     subprocess.Popen(command, start_new_session=True)
                 except (FileNotFoundError, OSError) as e:
-                    self.delete_app_directory()
-                    QMessageBox.critical(self, "ERROR", "Failed to start the application. Please restart the launcher to apply changes.")
-                    QApplication.quit()
+                    self.handle_startup_error("Failed to start the application.")
                     return
             
             if not os.path.exists(launcher_path):
                 raise FileNotFoundError(f"Launcher file not found: {launcher_path}")
             
         except (FileNotFoundError, OSError) as e:
-            self.delete_app_directory()
-            QMessageBox.critical(self, "Error", f"Could not launch the main application: {e}")
-            QApplication.quit()
+            self.handle_startup_error(f"Could not launch the main application: {e}")
             return
         
         QApplication.quit()
     
-    def delete_app_directory(self):
-        app_dir = os.path.join(MAIN_APP_DIR, 'app')
-        if os.path.exists(app_dir):
-            try:
-                shutil.rmtree(app_dir)
-            except OSError as e:
-                time.sleep(1)
-                try:
-                    shutil.rmtree(app_dir)
-                except Exception as e:
-                    pass
+    def handle_startup_error(self, message):
+        """
+        Handles startup errors by resetting the version in app.json
+        and displaying an error message.
+        """
+        self.update_status("An error occurred. Please restart the launcher.")
+        self.worker.update_local_version("0.0.0.0")
+        QMessageBox.critical(self, "ERROR", f"{message} There is something wrong. Please restart the launcher to try again.")
+        QApplication.quit()
 
     def handle_admin_request(self):
         self.update_status("Please grant admin privileges to continue the update.")
         if run_as_admin_and_restart():
             QApplication.quit()
         else:
-            QMessageBox.critical(self, "ERROR in Downloading update", "Please grant admin privileges to continue the update.")
+            QMessageBox.critical(self, "ERROR in Downloading update", "You must grant admin privileges to continue the update.")
             QApplication.quit()
 
     def closeEvent(self, event):
