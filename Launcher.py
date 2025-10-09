@@ -89,7 +89,6 @@ def resource_path(relative_path):
         base_path = os.path.dirname(sys.executable)
             
     else:
-        # Nếu đang chạy dưới dạng mã nguồn (script)
         base_path = os.path.dirname(os.path.abspath(__file__))
 
     return os.path.join(base_path, relative_path)
@@ -217,7 +216,7 @@ def get_available_versions(filters, offline=False):
 
         for v in mc_versions:
             if v.get('type') == 'release' and latest_release_id is None:
-                # Phiên bản đầu tiên trong danh sách (thường là mới nhất) có type='release'
+                
                 latest_release_id = v['id']        
         
         
@@ -235,7 +234,7 @@ def get_available_versions(filters, offline=False):
                 with open(VERSION_FILE, "r") as f:
                     mc_versions = json.load(f)
                     
-                # Cần tìm latest_release_id từ cache nếu offline
+                
                 for v in mc_versions:
                     if v.get('type') == 'release' and latest_release_id is None:
                         latest_release_id = v['id']
@@ -1092,51 +1091,40 @@ class MaZultLauncher(QWidget):
         
         
         
-        # 1. Thêm tùy chọn "Latest Release"
+        
         if latest_release_id:
             display_name = f"Latest Release ({latest_release_id})"
             
-            # Kiểm tra nếu phiên bản mới nhất đã được cài đặt
+            
             if latest_release_id in installed_versions_set: 
                 display_name = f"(Installed) Latest Release ({latest_release_id})"
             
             self.version_combo.addItem(display_name, latest_release_id)
             
-            # Cập nhật setting nếu phiên bản mới nhất là phiên bản mặc định
             if current_version is None:
                 current_version = latest_release_id
         
 
         if show_installed:
             for version in installed_versions:
-                # Bỏ qua Latest Release ID vì đã thêm ở B1
                 if version == latest_release_id: 
                     continue
                 
                 self.version_combo.addItem(f"(Installed) {version}", version)
-        
-        # 3. Thêm các phiên bản có sẵn (releases/snapshots/...) 
+         
         for label, version_id in available_versions:
-            
-            # BỎ QUA nếu nó là Latest Release ID VÀ nó đã được cài đặt
-            # (Giữ nguyên logic lần trước để tạo ra 2 mục)
+
             if version_id == latest_release_id:
-                # THÊM NHÃN (INSTALLED) cho mục 'Release - 1.21.10'
                 if version_id in installed_versions_set:
                     label = f"(Installed) {label}"
                 self.version_combo.addItem(label, version_id)
                 continue
-            
-            # Chỉ thêm các phiên bản CHƯA cài đặt (khác Latest Release ID)
+        
             if version_id not in installed_versions_set:
                 self.version_combo.addItem(label, version_id)
             else:
-                # THÊM NHÃN (INSTALLED) cho các phiên bản đã cài đặt còn lại (nếu bạn muốn chúng xuất hiện 2 lần)
-                # Tuy nhiên, theo yêu cầu của bạn, chúng ta chỉ cần thêm nhãn cho 1.21.10. 
-                # Các phiên bản khác đã được thêm ở B2.
                 pass 
                 
-        # 4. Thiết lập phiên bản đã chọn trước đó hoặc phiên bản mới nhất
         if current_version:
             index = self.version_combo.findData(current_version)
             if index != -1:
@@ -1379,14 +1367,12 @@ class MaZultLauncher(QWidget):
             version_dir = os.path.join(get_minecraft_directory(), "versions", selected_version_id)
             jar_path = os.path.join(version_dir, f"{selected_version_id}.jar")
 
-            # ✅ Chờ file jar thực sự tồn tại (tránh việc lib tự tải lại)
             for _ in range(10):
                 if os.path.exists(jar_path):
                     break
                 print("[DEBUG] Waiting for jar to exist...")
                 time.sleep(0.5)
 
-            # Tạo command launch sau khi chắc chắn đã có file
             command = minecraft_launcher_lib.command.get_minecraft_command(
                 selected_version_id,
                 get_minecraft_directory(),
@@ -1395,7 +1381,6 @@ class MaZultLauncher(QWidget):
             print("Launching with command:", " ".join(command))
             self.update_rpc_game(selected_version_id)
 
-            # Cập nhật giao diện
             self.play_button.setText("Launching...")
             self.play_button.setEnabled(False)
             self.play_button.setStyleSheet(self.load_styles())
@@ -1407,7 +1392,6 @@ class MaZultLauncher(QWidget):
                 self.temp_height = self.height()
             
 
-            # ✅ Chỉ khởi chạy Minecraft, không cài lại gì nữa
             self.minecraft_thread = MinecraftThread(command, get_minecraft_directory(), self)
             self.minecraft_thread.finished_signal.connect(self.on_minecraft_finished)
             self.minecraft_thread.log_signal.connect(self.on_minecraft_log)
@@ -1422,7 +1406,6 @@ class MaZultLauncher(QWidget):
             self.play_button.setStyleSheet(self.load_styles())
             self.show()
 
-        # ✅ Cleanup thread đúng lúc
         if self.download_thread:
             self.download_thread.deleteLater()
             self.download_thread = None
