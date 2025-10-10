@@ -32,9 +32,10 @@ from pypresence.exceptions import InvalidID, PipeClosed
 from packaging import version as packaging
 
 
-LAUNCHER_VERSION = "1.105.27.9"
+LAUNCHER_VERSION = "1.105.28.3"
 GITHUB_API_URL = "https://api.github.com/repos/LunarMoonDLCT/MaZult-Launcher/releases/latest"
 DISCORD_CLIENT_ID = "1410269369748946986"
+
 
 class UpdateChecker(QObject):
     update_available = Signal(str, str)
@@ -147,8 +148,6 @@ def load_settings():
             "alpha": False,
             "installed": True
         },
-        "window_width": 925, 
-        "window_height": 530,
         "dev_console": False,
         "hide_on_launch": True,
         "jvm_args": [],
@@ -201,8 +200,14 @@ def get_installed_versions():
                 return (0, 0, 0)
         except (ValueError, IndexError):
             return (0, 0, 0)
+
+    def sort_key_packaging(v_id):
+        try:
+            return packaging.Version(v_id)
+        except packaging.InvalidVersion:
+            return packaging.Version("0") 
     
-    return sorted(installed_versions, key=sort_key, reverse=True)
+    return sorted(installed_versions, key=sort_key_packaging, reverse=True)
 
 def get_available_versions(filters, offline=False):
     versions = []
@@ -252,7 +257,7 @@ def get_available_versions(filters, offline=False):
         "old_alpha": filters.get("alpha", False),
     }
 
-    for v in mc_versions:
+    for v in mc_versions: 
         if version_types.get(v.get('type', 'release'), False):
             label = f"{v.get('type', 'release').capitalize()} - {v['id']}"
             filtered_versions.append((label, v['id']))
@@ -650,7 +655,8 @@ class MinecraftThread(QThread):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 universal_newlines=True,
-                encoding='utf-8'
+                encoding='utf-8',
+                errors='ignore'
             )
             for line in iter(self.process.stdout.readline, ''):
                 self.log_signal.emit(line.strip())
@@ -1068,6 +1074,7 @@ class MaZultLauncher(QWidget):
             settings = load_settings()
             hide_on_launch = settings.get("hide_on_launch", True)
             if hide_on_launch:
+                print("[Launcher] I'm here :)")
                 self.show()
                 if self.temp_width > self.minimumWidth() and self.temp_height > self.minimumHeight():
                     self.resize(self.temp_width, self.temp_height)
@@ -1087,67 +1094,79 @@ class MaZultLauncher(QWidget):
         
         installed_versions = get_installed_versions()
         installed_versions_set = set(installed_versions)
+        
         available_versions, latest_release_id = get_available_versions(filters)
         
         
         
-        
-        if latest_release_id:
-            display_name = f"Latest Release ({latest_release_id})"
-            
-            
-            if latest_release_id in installed_versions_set: 
-                display_name = f"(Installed) Latest Release ({latest_release_id})"
-            
-            self.version_combo.addItem(display_name, latest_release_id)
-            
-            if current_version is None:
-                current_version = latest_release_id
-        
+        all_versions_data = {}
 
-        if show_installed:
-            for version in installed_versions:
-                if version == latest_release_id: 
-                    continue
-                
-                self.version_combo.addItem(f"(Installed) {version}", version)
-         
+        
         for label, version_id in available_versions:
+            all_versions_data[version_id] = {
+                "label": label,
+                "is_installed": version_id in installed_versions_set
+            }
 
+        
+        if show_installed:
+            for version_id in installed_versions:
+                if version_id not in all_versions_data:
+                    all_versions_data[version_id] = {
+                        "label": version_id, 
+                        "is_installed": True
+                    }
+
+        
+        def sort_key(v_id):
+            is_installed = all_versions_data[v_id].get("is_installed", False) and show_installed
+            try:
+                version_obj = packaging.Version(v_id)
+            except packaging.InvalidVersion:
+                version_obj = packaging.Version("0") # Fallback for non-standard versions
+            
+            
+            
+            
+            return (is_installed, version_obj)
+
+        sorted_version_ids = sorted(all_versions_data.keys(), key=sort_key, reverse=True)
+
+        
+        for version_id in sorted_version_ids:
+            data = all_versions_data[version_id]
+            display_label = data["label"]
+
+            
             if version_id == latest_release_id:
-                if version_id in installed_versions_set:
-                    label = f"(Installed) {label}"
-                self.version_combo.addItem(label, version_id)
-                continue
-        
-            if version_id not in installed_versions_set:
-                self.version_combo.addItem(label, version_id)
-            else:
-                pass 
                 
+                if data["is_installed"] and show_installed:
+                    self.version_combo.addItem(f"(Installed) Latest Release ({version_id})", version_id)
+                else:
+                    self.version_combo.addItem(f"Latest Release ({version_id})", version_id)
+
+                
+                if data["is_installed"] and show_installed:
+                    self.version_combo.addItem(f"(Installed) Release - {version_id}", version_id)
+                else:
+                    self.version_combo.addItem(f"Release - {version_id}", version_id)
+                continue  
+
+            
+            if data["is_installed"] and show_installed:
+                display_label = f"(Installed) {display_label}"
+            
+            self.version_combo.addItem(display_label, version_id)
+        
+        # Set the current selection
         if current_version:
             index = self.version_combo.findData(current_version)
             if index != -1:
                 self.version_combo.setCurrentIndex(index)
-                
-                
-                
-                
-        if show_installed:
-            for version in installed_versions:
-                self.version_combo.addItem(f"(Installed) {version}", version)
-        
-        installed_versions_set = set(installed_versions)
-        for label, version_id in available_versions:
-            if version_id not in installed_versions_set:
-                self.version_combo.addItem(label, version_id)
-        
-        if current_version:
-            index = self.version_combo.findData(current_version)
+        elif latest_release_id:
+            index = self.version_combo.findData(latest_release_id)
             if index != -1:
                 self.version_combo.setCurrentIndex(index)
-                
-        
         
         if self.rpc:
             self.update_rpc_menu()
@@ -1387,6 +1406,7 @@ class MaZultLauncher(QWidget):
 
             hide_on_launch = settings.get("hide_on_launch", True)
             if hide_on_launch:
+                print("[Launcher] i'm hide :)")
                 self.hide()
                 self.temp_width = self.width()
                 self.temp_height = self.height()
@@ -1650,25 +1670,27 @@ class LoadingWindow(QWidget):
             QApplication.instance().quit()
         else:
             self.timer.start(100)
-            self.update_progress(100, "Loading GUI...")
+            self.update_progress(100, "Preparing GUI...")
 
 
     def update_loading_state(self):
         if self.progress < 100:
             self.progress += 10
-            if self.progress == 10:
-                self.update_progress(self.progress, "Check For Update...")
-            elif self.progress == 50:
-                self.update_progress(self.progress, "Loading config.")
-            elif self.progress == 90:
-                self.update_progress(self.progress, "Loading GUI...")
-            else:
-                self.update_progress(self.progress, "Installizing...")
+            if self.progress < 30:
+                self.update_progress(self.progress, "Checking for updates...")
+            elif self.progress < 60:
+                self.update_progress(self.progress, "Loading configuration...")
+            elif self.progress < 90:
+                self.update_progress(self.progress, "Preparing GUI...")
         else:
             self.timer.stop()
-            self.main_window = MaZultLauncher(self.update_info)
-            self.main_window.show()
-            self.close()
+            self.update_progress(100, "Almost done...")
+            QTimer.singleShot(700, lambda: (
+                setattr(self, "main_window", MaZultLauncher(self.update_info)),
+                self.main_window.show(),
+                self.close()
+            ))
+
 
     def update_progress(self, value, text=""):
         self.progress_bar.setValue(value)
