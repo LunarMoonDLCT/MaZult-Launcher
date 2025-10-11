@@ -1,7 +1,7 @@
 ; --- MaZult Launcher Inno Setup Script (64-bit only) ---
 [Setup]
 AppName=MaZult Launcher
-AppVersion=1.104.98.1
+AppVersion=1.829.921.3
 AppPublisher=LunarMoonDLCT
 AppCopyright=© 2025 LunarMoonDLCT
 DefaultDirName={pf}\MaZult Launcher
@@ -10,39 +10,33 @@ OutputBaseFilename=MaZultLauncher_Setup
 Compression=lzma
 SolidCompression=yes
 
-; Icon chính cho file setup và app
+; Icon cho setup và app
 SetupIconFile=app\icon.ico
 
 DisableWelcomePage=no
-; Nếu muốn thay banner/logo thì cần BMP (không bắt buộc)
-; WizardImageFile=app\logo.bmp
-; WizardSmallImageFile=app\logo_small.bmp
 
 UninstallDisplayIcon={app}\MaZult Launcher.exe
 UninstallDisplayName=MaZult Launcher
-
-; Force installer to use 64-bit mode
 ArchitecturesInstallIn64BitMode=x64
-
-; Hiển thị màn hình chọn thư mục cài đặt
 DisableDirPage=no
+
+; ✅ Dùng cái này thay vì UninstallConfirm=no
+Uninstallable=yes
 
 [Languages]
 Name: "en"; MessagesFile: "compiler:Default.isl"
 
 [Messages]
 WelcomeLabel1=Welcome to the MaZult Launcher Setup Wizard
-WelcomeLabel2=This is a launcher for minecraft.
+WelcomeLabel2=This is a launcher for Minecraft.
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop icon"; GroupDescription: "Additional options:"
 Name: "launchafterinstall"; Description: "Launch MaZult Launcher after installation"; GroupDescription: "Final options:"
 
 [Files]
-Source: "app\MaZult Launcher.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "app\icon.ico"; DestDir: "{app}"; Flags: ignoreversion
-Source: "app\python3.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "app\python313.dll"; DestDir: "{app}"; Flags: ignoreversion
+
+Source: "app\*"; DestDir: "{app}"; Flags: ignoreversion
 Source: "app\lib\*"; DestDir: "{app}\lib"; Flags: recursesubdirs createallsubdirs
 
 [Icons]
@@ -55,26 +49,29 @@ Filename: "{app}\MaZult Launcher.exe"; Description: "Launch MaZult Launcher"; Fl
 [Code]
 var
   RemoveDataCheckBox: TNewCheckBox;
+  DoUninstall, RemoveData: Boolean;
 
 function InitializeUninstall(): Boolean;
 var
   Form: TSetupForm;
-  BtnUninstall, BtnCancel: TNewButton;
+  BtnYes, BtnNo: TNewButton;
   ResultCode: Integer;
 begin
-  Result := False;
+  DoUninstall := False;
+  RemoveData := False;
 
   Form := CreateCustomForm;
   try
     Form.Caption := 'Uninstall MaZult Launcher';
     Form.ClientWidth := ScaleX(420);
-    Form.ClientHeight := ScaleY(150);
+    Form.ClientHeight := ScaleY(160);
     Form.Position := poScreenCenter;
+    Form.BorderStyle := bsDialog;
 
     with TNewStaticText.Create(Form) do
     begin
       Parent := Form;
-      Caption := 'Are you sure you want to completely remove MaZult Launcher from your system?';
+      Caption := 'Do you really want to completely remove MaZult Launcher from your system?';
       Left := ScaleX(20);
       Top := ScaleY(20);
       Width := Form.ClientWidth - ScaleX(40);
@@ -85,28 +82,32 @@ begin
     RemoveDataCheckBox.Parent := Form;
     RemoveDataCheckBox.Caption := 'Also remove user data and configuration files';
     RemoveDataCheckBox.Left := ScaleX(20);
-    RemoveDataCheckBox.Top := ScaleY(60);
+    RemoveDataCheckBox.Top := ScaleY(70);
     RemoveDataCheckBox.Width := Form.ClientWidth - ScaleX(40);
 
-    BtnUninstall := TNewButton.Create(Form);
-    BtnUninstall.Parent := Form;
-    BtnUninstall.Caption := 'Uninstall';
-    BtnUninstall.ModalResult := mrOK;
-    BtnUninstall.Left := Form.ClientWidth div 2 - ScaleX(100);
-    BtnUninstall.Top := ScaleY(100);
+    BtnYes := TNewButton.Create(Form);
+    BtnYes.Parent := Form;
+    BtnYes.Caption := 'Yes';
+    BtnYes.ModalResult := mrYes;
+    BtnYes.Left := Form.ClientWidth div 2 - ScaleX(100);
+    BtnYes.Top := ScaleY(110);
 
-    BtnCancel := TNewButton.Create(Form);
-    BtnCancel.Parent := Form;
-    BtnCancel.Caption := 'Cancel';
-    BtnCancel.ModalResult := mrCancel;
-    BtnCancel.Left := Form.ClientWidth div 2 + ScaleX(10);
-    BtnCancel.Top := ScaleY(100);
+    BtnNo := TNewButton.Create(Form);
+    BtnNo.Parent := Form;
+    BtnNo.Caption := 'No';
+    BtnNo.ModalResult := mrNo;
+    BtnNo.Left := Form.ClientWidth div 2 + ScaleX(10);
+    BtnNo.Top := ScaleY(110);
 
     ResultCode := Form.ShowModal;
-    if ResultCode = mrOK then
-      Result := True
+    if ResultCode = mrYes then
+    begin
+      DoUninstall := True;
+      RemoveData := RemoveDataCheckBox.Checked;
+      Result := True;  // tiếp tục uninstall
+    end
     else
-      Result := False;
+      Result := False; // hủy bỏ uninstall
   finally
     Form.Free;
   end;
@@ -114,11 +115,14 @@ end;
 
 procedure DeinitializeUninstall();
 begin
-  { Luôn xoá thư mục bin vì nó được tạo sau khi app chạy }
+  if not DoUninstall then
+    exit;
+
+  { Xoá thư mục cài đặt }
   DelTree(ExpandConstant('{app}'), True, True, True);
 
   { Nếu người dùng chọn thì xoá thêm dữ liệu trong AppData }
-  if Assigned(RemoveDataCheckBox) and RemoveDataCheckBox.Checked then
+  if RemoveData then
   begin
     DelTree(ExpandConstant('{userappdata}\.mazultlauncher'), True, True, True);
   end;
@@ -128,4 +132,10 @@ begin
 
   MsgBox('MaZult Launcher has been successfully removed.'#13#10#13#10 +
          'Thank you for using it, see you again soon!', mbInformation, MB_OK);
+end;
+
+function NeedRestart(): Boolean;
+begin
+  { Không cho cancel hoặc yêu cầu restart sau khi Yes }
+  Result := False;
 end;
