@@ -32,7 +32,7 @@ from pypresence.exceptions import InvalidID, PipeClosed
 from packaging import version as packaging
 
 
-LAUNCHER_VERSION = "1.105.28.3"
+LAUNCHER_VERSION = "1.105.28.4"
 GITHUB_API_URL = "https://api.github.com/repos/LunarMoonDLCT/MaZult-Launcher/releases/latest"
 DISCORD_CLIENT_ID = "1410269369748946986"
 
