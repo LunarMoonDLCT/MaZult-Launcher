@@ -1097,18 +1097,14 @@ class MaZultLauncher(QWidget):
         
         available_versions, latest_release_id = get_available_versions(filters)
         
-        
-        
         all_versions_data = {}
 
-        
         for label, version_id in available_versions:
             all_versions_data[version_id] = {
                 "label": label,
                 "is_installed": version_id in installed_versions_set
             }
 
-        
         if show_installed:
             for version_id in installed_versions:
                 if version_id not in all_versions_data:
@@ -1117,56 +1113,66 @@ class MaZultLauncher(QWidget):
                         "is_installed": True
                     }
 
-        
         def sort_key(v_id):
             is_installed = all_versions_data[v_id].get("is_installed", False) and show_installed
             try:
                 version_obj = packaging.Version(v_id)
             except packaging.InvalidVersion:
-                version_obj = packaging.Version("0") # Fallback for non-standard versions
-            
-            
-            
-            
+                version_obj = packaging.Version("0")
             return (is_installed, version_obj)
 
         sorted_version_ids = sorted(all_versions_data.keys(), key=sort_key, reverse=True)
 
-        
         for version_id in sorted_version_ids:
             data = all_versions_data[version_id]
             display_label = data["label"]
 
-            
             if version_id == latest_release_id:
-                
                 if data["is_installed"] and show_installed:
                     self.version_combo.addItem(f"(Installed) Latest Release ({version_id})", version_id)
                 else:
                     self.version_combo.addItem(f"Latest Release ({version_id})", version_id)
 
-                
                 if data["is_installed"] and show_installed:
                     self.version_combo.addItem(f"(Installed) Release - {version_id}", version_id)
                 else:
                     self.version_combo.addItem(f"Release - {version_id}", version_id)
-                continue  
+                continue
 
-            
             if data["is_installed"] and show_installed:
                 display_label = f"(Installed) {display_label}"
             
             self.version_combo.addItem(display_label, version_id)
         
-        # Set the current selection
         if current_version:
-            index = self.version_combo.findData(current_version)
-            if index != -1:
-                self.version_combo.setCurrentIndex(index)
-        elif latest_release_id:
-            index = self.version_combo.findData(latest_release_id)
-            if index != -1:
-                self.version_combo.setCurrentIndex(index)
+            matching_indexes = []
+            for i in range(self.version_combo.count()):
+                if self.version_combo.itemData(i) == current_version:
+                    label = self.version_combo.itemText(i)
+                    matching_indexes.append((i, label))
+
+            if matching_indexes:
+                preferred_index = None
+                for idx, label in matching_indexes:
+                    if "Release -" in label and "Latest" not in label:
+                        preferred_index = idx
+                        break
+                if preferred_index is None:
+                    preferred_index = matching_indexes[0][0]
+
+                self.version_combo.setCurrentIndex(preferred_index)
+                print(f"[DEBUG] Selected version restored: {self.version_combo.itemText(preferred_index)}")
+            else:
+                print(f"[DEBUG] Saved version {current_version} not found, fallback to latest release.")
+                if latest_release_id:
+                    index = self.version_combo.findData(latest_release_id)
+                    if index != -1:
+                        self.version_combo.setCurrentIndex(index)
+        else:
+            if latest_release_id:
+                index = self.version_combo.findData(latest_release_id)
+                if index != -1:
+                    self.version_combo.setCurrentIndex(index)
         
         if self.rpc:
             self.update_rpc_menu()
