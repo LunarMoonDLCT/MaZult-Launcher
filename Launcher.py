@@ -24,6 +24,7 @@ from PySide6.QtGui import (
 from PySide6.QtCore import (
     Qt, QTimer, QSize, Signal, QThread, QObject, QUrl, QRect, QRectF, QPointF
 )
+import traceback
 import minecraft_launcher_lib
 import datetime
 import uuid
@@ -32,7 +33,7 @@ from pypresence.exceptions import InvalidID, PipeClosed
 from packaging import version as packaging
 
 
-LAUNCHER_VERSION = "1.105.28.4"
+LAUNCHER_VERSION = "1.105.29.1"
 GITHUB_API_URL = "https://api.github.com/repos/LunarMoonDLCT/MaZult-Launcher/releases/latest"
 DISCORD_CLIENT_ID = "1410269369748946986"
 
@@ -128,7 +129,6 @@ def save_settings(username=None, version_id=None, ram_mb=None, mc_dir=None, filt
     if discord_rpc is not None:
         data["discord_rpc"] = discord_rpc
 
-        
     os.makedirs(get_appdata_path(), exist_ok=True)
     with open(SETTINGS_FILE, "w") as f:
         json.dump(data, f, indent=4)
@@ -216,18 +216,14 @@ def get_available_versions(filters, offline=False):
         if offline:
             raise Exception("Forced offline")
         mc_versions = minecraft_launcher_lib.utils.get_version_list()
-        serializable_versions = []
-        
+        serializable_versions = []        
 
         for v in mc_versions:
             if v.get('type') == 'release' and latest_release_id is None:
-                
                 latest_release_id = v['id']        
-        
-        
             if isinstance(v.get('releaseTime'), datetime.datetime):
                 v['releaseTime'] = v['releaseTime'].isoformat()
-            serializable_versions.append(v)
+            serializable_versions.append(v)            
             
         with open(VERSION_FILE, "w") as f:
             json.dump(serializable_versions, f)
@@ -237,8 +233,7 @@ def get_available_versions(filters, offline=False):
         if os.path.exists(VERSION_FILE):
             try:
                 with open(VERSION_FILE, "r") as f:
-                    mc_versions = json.load(f)
-                    
+                    mc_versions = json.load(f)                    
                 
                 for v in mc_versions:
                     if v.get('type') == 'release' and latest_release_id is None:
@@ -247,7 +242,6 @@ def get_available_versions(filters, offline=False):
                 return [("Offline: No cached versions", "")], None 
         else:
             return [("Offline: No cached versions", "")], None 
-
 
     filtered_versions = []
     version_types = {
@@ -306,9 +300,9 @@ class SettingsDialog(QDialog):
         ram_groupbox = QGroupBox("RAM Allocation")
         ram_layout = QVBoxLayout()
         self.ram_slider = QSlider(Qt.Horizontal)
-        self.ram_slider.setMinimum(520)
+        self.ram_slider.setMinimum(512)
         self.ram_slider.setMaximum(psutil.virtual_memory().total // (1024 * 1024) - 512)
-        self.ram_slider.setSingleStep(520)
+        self.ram_slider.setSingleStep(512)
         ram_mb = settings.get("ram_mb", 2048)
         self.ram_slider.setValue(ram_mb)
         self.ram_label = QLabel()
@@ -453,8 +447,6 @@ class SettingsDialog(QDialog):
             "alpha": self.alpha_checkbox.isChecked(),
             "installed": self.installed_checkbox.isChecked(),
         }
-        
-
         
         dev_console_enabled = self.dev_console_checkbox.isChecked()
         hide_on_launch = not self.hide_on_launch_checkbox.isChecked()
@@ -686,17 +678,30 @@ class MaZultLauncher(QWidget):
         dialog.exec()
 
     def update_username_combo(self):
+        self.username_combo.blockSignals(True)
+
         self.username_combo.clear()
         self.users = load_users()
         self.username_combo.addItems(self.users)
         self.username_combo.addItem("Manage Users...")
 
         settings = load_settings()
-        if "username" in settings and settings["username"] in self.users:
-            self.username_combo.setCurrentText(settings["username"])
-        else:
-            if self.users:
-                self.username_combo.setCurrentText(self.users[0])
+        saved_username = settings.get("username")
+
+        if saved_username and saved_username in self.users:
+            self.username_combo.setCurrentText(saved_username)
+            print(f"[DEBUG] Restored saved username: {saved_username}")
+        elif saved_username:
+            self.username_combo.insertItem(0, saved_username)
+            self.username_combo.setCurrentText(saved_username)
+            print(f"[DEBUG] Username {saved_username} not found in users.json, added temporarily.")
+        elif self.users:
+            default_user = self.users[0]
+            self.username_combo.setCurrentText(default_user)
+            save_settings(username=default_user)
+            print(f"[DEBUG] Defaulted username to: {default_user}")
+
+        self.username_combo.blockSignals(False)
     
     def on_username_changed(self, text):
         if text == "Manage Users...":
@@ -707,12 +712,17 @@ class MaZultLauncher(QWidget):
             save_settings(username=text)
 
     def on_version_changed(self, index):
+        selected_label = self.version_combo.itemText(index)
         selected_version_id = self.version_combo.itemData(index)
+
         if selected_version_id:
-            save_settings(version_id=selected_version_id)
+            if "Latest Release" in selected_label:
+                save_settings(version_id="latest")
+            else:
+                save_settings(version_id=selected_version_id)
+
             if self.rpc:
                 self.update_rpc_menu()
-
     def install_legacy_forge(self, version_id):
         mc_dir = get_minecraft_directory()
         installer_url = "https://maven.minecraftforge.net/net/minecraftforge/forge/1.7.10-10.13.4.1614-1.7.10/forge-1.7.10-10.13.4.1614-1.7.10-installer.jar"
@@ -860,6 +870,23 @@ class MaZultLauncher(QWidget):
         except Exception as e:
             print(f"Failed to launch Forge: {e}")
 
+    def open_minecraft_folder(self):
+        mc_dir = get_minecraft_directory()
+        path = str(mc_dir)
+
+        try:
+            if sys.platform.startswith('win32'):
+                os.startfile(path)
+            elif sys.platform.startswith('darwin'):  # macOS
+                subprocess.Popen(['open', path])
+            elif sys.platform.startswith('linux'):
+                subprocess.Popen(['xdg-open', path])
+            else:
+                QMessageBox.warning(self, "Unsupported OS", "Cannot open folder on this operating system.")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open Minecraft folder:\n{e}")
+
+
     def __init__(self, update_info=None):
         super().__init__()
         self.appdata_dir = get_appdata_path()
@@ -886,8 +913,6 @@ class MaZultLauncher(QWidget):
         
         self.temp_width = 0
         self.temp_height = 0
-
-
 
         sidebar = QVBoxLayout()
         sidebar.setAlignment(Qt.AlignmentFlag.AlignTop)
@@ -932,13 +957,40 @@ class MaZultLauncher(QWidget):
         header_layout = QHBoxLayout()
         title = QLabel("Minecraft")
         title.setFont(QFont("Segoe UI", 24, QFont.Bold))
+
+        open_folder_button = QPushButton("📂")
+        open_folder_button.setFixedSize(30, 30)
+        open_folder_button.setStyleSheet("""
+            QPushButton {
+                border: none;
+                background-color: #2D2D2D;
+                font-size: 16px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #404040;
+            }
+        """)
+        open_folder_button.clicked.connect(self.open_minecraft_folder)
+
         refresh_button = QPushButton("↻")
         refresh_button.setFixedSize(30, 30)
-        refresh_button.setStyleSheet("font-size: 16px; font-weight: bold;")
+        refresh_button.setStyleSheet("""
+            QPushButton {
+                border: none;
+                background-color: #2D2D2D;
+                font-size: 16px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #404040;
+            }
+        """)
         refresh_button.clicked.connect(self.load_versions)
 
         header_layout.addWidget(title)
         header_layout.addStretch()
+        header_layout.addWidget(open_folder_button)
         header_layout.addWidget(refresh_button)
         content_layout.addLayout(header_layout)
 
@@ -959,7 +1011,6 @@ class MaZultLauncher(QWidget):
         self.progress_bar.hide()
         content_layout.addWidget(self.progress_label)
         content_layout.addWidget(self.progress_bar)
-
 
         self.play_button = QPushButton("Play")
         self.play_button.setObjectName("playButton")
@@ -1007,7 +1058,6 @@ class MaZultLauncher(QWidget):
             try:
                 selected_version = self.version_combo.currentText().replace("(Installed) ", "")
                 self.rpc.update(
-                    #state=f"",
                     details="In the menu",
                     large_image="mzlauncher",
                     large_text="MaZult Launcher",
@@ -1489,7 +1539,7 @@ class MaZultLauncher(QWidget):
         minecraft_directory = get_minecraft_directory()
         jvm_args = settings.get("jvm_args", [])
         
-        default_jvm_args = [f"-Xmx{allocated_ram_mb}M", "-Xms256M"]
+        default_jvm_args = [f"-Xmx{allocated_ram_mb}M", "-Xms512M"]
         final_jvm_args = []
         overridden_args = set()
 
@@ -1543,8 +1593,6 @@ class MaZultLauncher(QWidget):
         )
         self.download_thread.start()
     
-    
-
 
 class DownloadThread(QThread):
     progress_signal = Signal(str, int, int, float)
@@ -1704,6 +1752,40 @@ class LoadingWindow(QWidget):
         QApplication.instance().processEvents()
 
 if __name__ == "__main__":
+    def global_exception_hook(exctype, value, tb):
+        error_text = "".join(traceback.format_exception(exctype, value, tb))
+        print("=== LAUNCHER CRASH DETECTED ===")
+        print(error_text)
+    
+        # Ghi log crash vào file
+        try:
+            log_dir = get_appdata_path() / "logs"
+            os.makedirs(log_dir, exist_ok=True)
+            log_file = log_dir / f"crash_{int(time.time())}.log"
+            with open(log_file, "w", encoding="utf-8") as f:
+                f.write(error_text)
+            print(f"[CRASH LOG SAVED] -> {log_file}")
+        except Exception as e:
+            print(f"[CRASH LOGGING FAILED] {e}")
+    
+        # Popup lỗi cho người dùng
+        try:
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Critical)
+            msg.setWindowTitle("💥 MaZult Launcher - Crash Detected")
+            msg.setText("Launcher vừa gặp lỗi nghiêm trọng và sẽ bị đóng.")
+            msg.setInformativeText(str(value))
+            msg.setDetailedText(error_text)
+            msg.setStandardButtons(QMessageBox.Ok)
+            msg.exec()
+        except Exception as e:
+            print(f"Error showing crash dialog: {e}")
+    
+        sys.__excepthook__(exctype, value, tb)
+        sys.exit(1)
+
+    sys.excepthook = global_exception_hook
+
     app = QApplication(sys.argv)
 
     appdata_path = get_appdata_path()
