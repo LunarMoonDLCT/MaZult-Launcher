@@ -33,7 +33,7 @@ from pypresence.exceptions import InvalidID, PipeClosed
 from packaging import version as packaging
 
 
-LAUNCHER_VERSION = "1.105.29.1"
+LAUNCHER_VERSION = "1.105.29.2"
 GITHUB_API_URL = "https://api.github.com/repos/LunarMoonDLCT/MaZult-Launcher/releases/latest"
 DISCORD_CLIENT_ID = "1410269369748946986"
 
@@ -608,12 +608,14 @@ class DevConsole(QWidget):
     def kill_minecraft_process(self):
         if self.parent_launcher.minecraft_thread and self.parent_launcher.minecraft_thread.process:
             try:
+                self.parent_launcher.minecraft_thread.killed_by_user = True
                 self.parent_launcher.minecraft_thread.process.kill()
                 self.parent_launcher.minecraft_thread.process.wait()
                 print("Minecraft process killed.")
                 self.set_kill_button_enabled(False)
                 if self.parent_launcher.isHidden():
                     self.parent_launcher.show()
+                    self.parent_launcher.update_rpc_menu()
             except Exception as e:
                 print(f"Failed to kill Minecraft process: {e}")
 
@@ -622,15 +624,79 @@ class DevConsole(QWidget):
         self.hide()
         event.ignore()
 
+class CrashCheckDialog(QDialog):
+    def __init__(self, error_code="UNKNOWN", crash_report_path=None, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("MaZult Crash Check")
+        self.setFixedSize(400, 250)
+        self.setStyleSheet("background-color: #202020; color: white;")
+
+        self.layout = QVBoxLayout()
+        self.label = QLabel("Uh oh, something went wrong.")
+        self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.layout.addWidget(self.label)
+
+        self.progress = QProgressBar()
+        self.progress.setRange(0, 0)
+        self.layout.addWidget(self.progress)
+
+        self.setLayout(self.layout)
+        QTimer.singleShot(3000, lambda: self.show_crash_info(error_code, crash_report_path))
+
+    def show_crash_info(self, error_code, crash_report_path):
+        for i in reversed(range(self.layout.count())):
+            widget = self.layout.itemAt(i).widget()
+            if widget:
+                widget.deleteLater()
+
+        title = QLabel(f"Minecraft crashed with code {error_code}")
+        title.setFont(QFont("Segoe UI", 12, QFont.Bold))
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        desc = QLabel("An unknown error occurred. Yes, truly unknown C:\n"
+                      "Possible causes: MODs, JVM, or RAM settings in launcher.")
+        desc.setWordWrap(True)
+        desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        fix_tips = QLabel("How to fix:\n"
+                          "- Check recently added mods.\n"
+                          "- Lower allocated RAM if too high.\n"
+                          "- Update Java or try another version.\n"
+                          "- Open crash report if available.")
+        fix_tips.setWordWrap(True)
+        fix_tips.setAlignment(Qt.AlignmentFlag.AlignLeft)
+
+        btn_layout = QHBoxLayout()
+        ok_btn = QPushButton("OK")
+        ok_btn.clicked.connect(self.accept)
+        btn_layout.addWidget(ok_btn)
+
+        if crash_report_path and os.path.exists(crash_report_path):
+            open_btn = QPushButton("Open Crash Report")
+            def open_report():
+                try:
+                    os.startfile(crash_report_path)
+                except Exception as e:
+                    QMessageBox.warning(self, "ERROR When open log", f"Cannot open log file:\n{e}")
+            open_btn.clicked.connect(open_report)
+            btn_layout.addWidget(open_btn)
+
+        self.layout.addWidget(title)
+        self.layout.addWidget(desc)
+        self.layout.addWidget(fix_tips)
+        self.layout.addLayout(btn_layout)
+
 class MinecraftThread(QThread):
     finished_signal = Signal()
     log_signal = Signal(str)
+    crash_detected = Signal(str, str)
 
     def __init__(self, command, minecraft_directory, parent=None):
         super().__init__(parent)
         self.command = command
         self.minecraft_directory = minecraft_directory
         self.process = None
+        self.killed_by_user = False
 
     def run(self):
         try:
@@ -650,15 +716,53 @@ class MinecraftThread(QThread):
                 encoding='utf-8',
                 errors='ignore'
             )
+            log_lines = []
             for line in iter(self.process.stdout.readline, ''):
                 self.log_signal.emit(line.strip())
-            self.process.wait()
+                log_lines.append(line.strip())
+            
+            try:
+                self.process.wait(timeout=2)
+            except Exception:
+                pass
+
+            if self.process.poll() is None:
+                print("[WARN] Minecraft process did not terminate correctly.")
+                try:
+                    self.process.kill()
+                except Exception:
+                    pass
+
+            log_text = "\n".join(log_lines)
+            if not self.killed_by_user and "Stopping!" not in log_text:
+                try:
+                    crash_report_path = None
+
+                    for line in log_lines:
+                        if "crash report saved to:" in line.lower():
+                            possible_path = line.split("to:", 1)[1].strip().strip('"')
+                            if os.path.exists(possible_path):
+                                crash_report_path = possible_path
+                                print(f"[DEBUG] Found crash report path from log: {crash_report_path}")
+                                break
+
+                    if not crash_report_path:
+                        crash_report_dir = Path(self.minecraft_directory) / "crash-reports"
+                        if crash_report_dir.exists():
+                            reports = sorted(crash_report_dir.glob("*.txt"), key=os.path.getmtime, reverse=True)
+                            if reports:
+                                crash_report_path = str(reports[0])
+                                print(f"[DEBUG] Using fallback crash report path: {crash_report_path}")
+
+                    self.crash_detected.emit("UNKNOWN", crash_report_path)
+                except Exception as e:
+                    print(f"[CrashCheck] Error showing crash dialog: {e}")
+
         except Exception as e:
             self.log_signal.emit(f"Error launching Minecraft: {e}")
         
         self.finished_signal.emit()
 
-class MaZultLauncher(QWidget):
     def closeEvent(self, event):
         if self.dev_console.isVisible():
             self.dev_console.close()
@@ -672,6 +776,10 @@ class MaZultLauncher(QWidget):
 
         event.accept()
 
+class MaZultLauncher(QWidget):
+    def show_crash_dialog(self, code, path):
+        dialog = CrashCheckDialog(code, path, self)
+        dialog.exec()
     def open_settings_dialog(self):
         dialog = SettingsDialog(self)
         dialog.refreshVersions.connect(self.load_versions)
@@ -1114,6 +1222,11 @@ class MaZultLauncher(QWidget):
                 QApplication.instance().quit()
 
     def on_minecraft_finished(self):
+        if self.minecraft_thread and self.minecraft_thread.isRunning():
+            self.minecraft_thread.quit()
+            self.minecraft_thread.wait(1000)
+            self.minecraft_thread = None
+
         if self.play_button and not self.play_button.parent() is None:
             self.play_button.setText("Play")
             self.play_button.setEnabled(True)
@@ -1471,6 +1584,7 @@ class MaZultLauncher(QWidget):
             self.minecraft_thread = MinecraftThread(command, get_minecraft_directory(), self)
             self.minecraft_thread.finished_signal.connect(self.on_minecraft_finished)
             self.minecraft_thread.log_signal.connect(self.on_minecraft_log)
+            self.minecraft_thread.crash_detected.connect(self.show_crash_dialog)
             self.dev_console.set_kill_button_enabled(True)
             self.minecraft_thread.start()
 
@@ -1498,6 +1612,16 @@ class MaZultLauncher(QWidget):
 
     def on_play_clicked(self):
         print("[DEBUG] Thread created")
+        # Nếu thread Minecraft cũ vẫn còn, thì hủy trước khi tạo cái mới
+        if self.minecraft_thread and self.minecraft_thread.isRunning():
+            try:
+                print("[WARN] Previous Minecraft thread still running, attempting cleanup...")
+                self.minecraft_thread.terminate()
+                self.minecraft_thread.wait(2000)
+                self.minecraft_thread = None
+            except Exception as e:
+                print(f"[ERROR] Failed to cleanup old thread: {e}")
+
         if self.is_downloading and self.download_thread and self.download_thread.isRunning():
             print("Download canceled by user.")
             self.download_thread.cancel()
@@ -1754,10 +1878,6 @@ class LoadingWindow(QWidget):
 if __name__ == "__main__":
     def global_exception_hook(exctype, value, tb):
         error_text = "".join(traceback.format_exception(exctype, value, tb))
-        print("=== LAUNCHER CRASH DETECTED ===")
-        print(error_text)
-    
-        # Ghi log crash vào file
         try:
             log_dir = get_appdata_path() / "logs"
             os.makedirs(log_dir, exist_ok=True)
@@ -1767,20 +1887,17 @@ if __name__ == "__main__":
             print(f"[CRASH LOG SAVED] -> {log_file}")
         except Exception as e:
             print(f"[CRASH LOGGING FAILED] {e}")
-    
-        # Popup lỗi cho người dùng
         try:
             msg = QMessageBox()
             msg.setIcon(QMessageBox.Critical)
-            msg.setWindowTitle("💥 MaZult Launcher - Crash Detected")
-            msg.setText("Launcher vừa gặp lỗi nghiêm trọng và sẽ bị đóng.")
+            msg.setWindowTitle("MaZult Launcher - Crash Detected")
+            msg.setText("The launcher has encountered a critical error and will close.")
             msg.setInformativeText(str(value))
             msg.setDetailedText(error_text)
             msg.setStandardButtons(QMessageBox.Ok)
             msg.exec()
         except Exception as e:
-            print(f"Error showing crash dialog: {e}")
-    
+            print(f"Failed to show crash dialog: {e}")
         sys.__excepthook__(exctype, value, tb)
         sys.exit(1)
 
