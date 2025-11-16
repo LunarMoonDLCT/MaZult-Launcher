@@ -18,7 +18,7 @@ An **Open-source Minecraft Launcher**.
 
 ### 🖥️ Windows
 
-1.  Download the **`[Mazult-Launcher-setup.exe](https://github.com/LunarMoonDLCT/MaZult-Launcher/releases/latest)`** file from the download page.
+1.  Download the **`[Mazult-Launcher-setup.exe`** file from the download page [[Download]](https://github.com/LunarMoonDLCT/MaZult-Launcher/releases/latest).
 2.  Run the file and proceed with the installation as usual.
 
 ### 🐧 Linux and 🍎 macOS
