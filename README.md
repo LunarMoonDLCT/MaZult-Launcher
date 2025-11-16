@@ -1,47 +1,71 @@
-# MaZultLauncher
-MaZult Launcher is a lightweight and feature-rich Minecraft launcher designed for offline play. It offers a simple, intuitive interface while giving you full control over your game.
+## 📝 MaZultLauncher
 
-## Key Features
-- Multi-User Support: Easily add, remove, and manage multiple user profiles directly within the launcher.
+An **Open-source Minecraft Launcher**.
 
-- Version Management: Download and play any Minecraft version, including releases, snapshots, beta, and alpha versions.
+[Download (Latest Release)](https://github.com/LunarMoonDLCT/MaZult-Launcher/releases/latest)
 
-- Resource Customization: Adjust the amount of allocated RAM for your game with a simple slider.
+---
 
-- Advanced Options: Add custom JVM arguments to fine-tune your game's performance.
+## ✨ Key Features
 
-- Automatic Updates (Windows Only): The launcher automatically checks for the latest version on GitHub, ensuring you're always up to date.
+* **Easy to use:** Simple and intuitive interface.
+* **Auto update:** Ensures you always run the latest version.
+* **And nothing :))**
 
-- Transparent and Open-Source: As an open-source project, the code is fully visible, so you can check how it works and contribute.
+---
 
-## How to Use
-- For Windows Users. 
-Download the latest MaZultLauncher.exe from our GitHub releases page.
+## 🛠️ Installation
 
-Run the executable file. The launcher will automatically handle all necessary setup and updates.
+### 🖥️ Windows
 
-- For Linux and macOS Users
+1.  Download the **`[Mazult-Launcher-setup.exe](https://github.com/LunarMoonDLCT/MaZult-Launcher/releases/latest)`** file from the download page.
+2.  Run the file and proceed with the installation as usual.
 
-Prerequisites: Make sure you have Python 3.8+ installed on your system.
+### 🐧 Linux and 🍎 macOS
 
-Install Required Libraries: Open your terminal and run the following command to install all dependencies:
+This version requires **Python 3** to be installed on your system.
 
-Bash
-```
-pip install -r requirements.txt
-```
-(Note: If pip doesn't work, try using pip3.)
+#### 1. Environment Setup
 
-Run the Launcher: After installing the libraries, you can run the launcher directly from the source code. Navigate to the folder containing Launcher.py and run this command:
+* If **Python 3** and **pip** are not installed:
+    * **For Debian/Ubuntu (Linux):**
+        ```bash
+        sudo apt update
+        sudo apt install python3 python3-pip
+        ```
+    * **For macOS (Using Homebrew):**
+        ```bash
+        brew install python
+        ```
+        *(Note: Python is often pre-installed, but an update might be necessary)*
 
-```
+#### 2. Download and Extract
 
-python Launcher.py
-```
-(Note: If python doesn't work, use python3 instead.)
+1.  Download the **`Mazult-Launcher-cross.zip`** file.
+2.  Extract the downloaded file into any folder.
 
-### Technical Information
-MaZult Launcher is built using Python 3 and PySide6. It relies on the popular minecraft-launcher-lib to handle the heavy lifting of version and asset management. The code is structured to be easy to read and modify.
+#### 3. Install Dependencies
 
-## Need Help?
-If you encounter any issues or have suggestions, please feel free to open a new issue on our GitHub repository. Your feedback is highly appreciated!
+1.  Open the **Terminal** and navigate to the extracted folder:
+    ```bash
+    cd <your_extracted_folder_path>
+    ```
+    *(Replace `<your_extracted_folder_path>` with the folder name, e.g., `cd MaZult-Launcher-cross`)*
+
+2.  Install all necessary Python libraries using the `requirements.txt` file:
+    ```bash
+    pip3 install -r requirements.txt
+    ```
+
+#### 4. Run the Launcher
+
+* Once the installation is complete, use the following command to run MaZultLauncher:
+    ```bash
+    python3 Mazult-Launcher.py
+    ```
+
+---
+
+## ❓ Troubleshooting
+
+If you encounter any errors or have questions, please feel free to open a **new Issue** on GitHub.
