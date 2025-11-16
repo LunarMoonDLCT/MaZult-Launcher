@@ -41,7 +41,7 @@ This version requires **Python 3** to be installed on your system.
 
 #### 2. Download and Extract
 
-1.  Download the **`Mazult-Launcher-cross.zip`** file.
+1.  Download the **`Mazult-Launcher-Others-OS.zip`** file.
 2.  Extract the downloaded file into any folder.
 
 #### 3. Install Dependencies
