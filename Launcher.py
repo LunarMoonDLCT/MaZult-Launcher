@@ -33,48 +33,10 @@ from pypresence.exceptions import InvalidID, PipeClosed
 from packaging import version as packaging
 
 
-LAUNCHER_VERSION = "1.105.29.2"
+LAUNCHER_VERSION = "1.105.29.4"
 GITHUB_API_URL = "https://api.github.com/repos/LunarMoonDLCT/MaZult-Launcher/releases/latest"
 DISCORD_CLIENT_ID = "1410269369748946986"
 
-
-class UpdateChecker(QObject):
-    update_available = Signal(str, str)
-    finished = Signal()
-
-    def __init__(self, current_version, parent=None):
-        super().__init__(parent)
-        self.current_version = current_version
-        self.latest_version_tag = None
-        self.download_url = None
-
-    def run(self):
-        try:
-            response = requests.get(GITHUB_API_URL, timeout=10)
-            if response.status_code == 200:
-                release_info = response.json()
-                latest_version_tag = release_info.get("tag_name")
-
-                universal_asset = None
-                for asset in release_info.get("assets", []):
-                    if "Universal.zip" in asset.get("name", ""):
-                        universal_asset = asset
-                        break
-                
-                if latest_version_tag and universal_asset:
-                    latest_version = packaging.version.parse(latest_version_tag)
-                    current_version_parsed = packaging.version.parse(self.current_version)
-
-                    if latest_version > current_version_parsed:
-                        self.latest_version_tag = latest_version_tag
-                        self.download_url = universal_asset["browser_download_url"]
-                        self.update_available.emit(self.latest_version_tag, self.download_url)
-            else:
-                print(f"Failed to fetch GitHub releases: Status {response.status_code}")
-        except requests.exceptions.RequestException as e:
-            print(f"Network error while checking for updates: {e}")
-        finally:
-            self.finished.emit()
 
 def get_appdata_path():
     if sys.platform.startswith('win32'):
@@ -95,6 +57,38 @@ def resource_path(relative_path):
 
     return os.path.join(base_path, relative_path)
 
+def list_available_languages():
+    lang_dir = resource_path("lang")
+    langs = {}
+    if not os.path.exists(lang_dir):
+        print("[Lang] No lang directory found.")
+        return langs
+
+    for file in os.listdir(lang_dir):
+        if file.endswith(".json"):
+            lang_code = file.replace(".json", "")
+            try:
+                with open(os.path.join(lang_dir, file), "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    lang_name = data.get("langinfo", lang_code)
+                    langs[lang_code] = lang_name
+            except Exception as e:
+                print(f"[Lang] Failed to read {file}: {e}")
+    return langs
+
+def load_language(lang_code="en_us"):
+    lang_path = os.path.join(resource_path("lang"), f"{lang_code}.json")
+    if os.path.exists(lang_path):
+        try:
+            with open(lang_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"[Lang] Error loading {lang_code}: {e}")
+    print(f"[Lang] Missing language file: {lang_code}, fallback to English.")
+    if lang_code != "en_us":
+        return load_language("en_us")
+    return {}
+
 VERSION_FILE = get_appdata_path() / "versions.json"
 VERSION_API = "https://launchermeta.mojang.com/mc/game/version_manifest.json"
 
@@ -108,7 +102,7 @@ class CropBox(QGraphicsRectItem):
 SETTINGS_FILE = get_appdata_path() / "settings.json"
 USERS_FILE = get_appdata_path() / "users.json"
 
-def save_settings(username=None, version_id=None, ram_mb=None, mc_dir=None, filters=None, dev_console=None, hide_on_launch=None, jvm_args=None, discord_rpc=None):
+def save_settings(username=None, version_id=None, ram_mb=None, mc_dir=None, filters=None, dev_console=None, hide_on_launch=None, jvm_args=None, discord_rpc=None, language=None):
     data = load_settings()
     if username is not None:
         data["username"] = username
@@ -128,6 +122,8 @@ def save_settings(username=None, version_id=None, ram_mb=None, mc_dir=None, filt
         data["jvm_args"] = jvm_args
     if discord_rpc is not None:
         data["discord_rpc"] = discord_rpc
+    if language is not None:
+        data["language"] = language
 
     os.makedirs(get_appdata_path(), exist_ok=True)
     with open(SETTINGS_FILE, "w") as f:
@@ -151,7 +147,8 @@ def load_settings():
         "dev_console": False,
         "hide_on_launch": True,
         "jvm_args": [],
-        "discord_rpc": True
+        "discord_rpc": True,
+        "language": "en_us"
     }
 
 def save_users(users):
@@ -274,21 +271,21 @@ def get_mojang_uuid(username):
 class SettingsDialog(QDialog):
     refreshVersions = Signal()
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, tr=None):
         super().__init__(parent)
-        self.setWindowTitle("Launcher Settings")
+        self.tr = tr if tr else load_language()
+        self.setWindowTitle(self.tr.get("settings", "Launcher Settings"))
         self.setMinimumSize(400, 300)
 
         tabs = QTabWidget()
 
         general_tab = QWidget()
-        general_layout = QVBoxLayout()
-        
+        general_layout = QVBoxLayout(general_tab)
         mc_dir_layout = QHBoxLayout()
-        mc_dir_label = QLabel("Minecraft Directory:")
+        mc_dir_label = QLabel(self.tr.get("minecraft_directory", "Minecraft Directory:"))
         self.mc_dir_input = QLineEdit()
         self.mc_dir_input.setText(str(get_minecraft_directory()))
-        self.mc_dir_browse_btn = QPushButton("Browse")
+        self.mc_dir_browse_btn = QPushButton(self.tr.get("browse", "Browse"))
         self.mc_dir_browse_btn.clicked.connect(self.browse_mc_dir)
         mc_dir_layout.addWidget(mc_dir_label)
         mc_dir_layout.addWidget(self.mc_dir_input)
@@ -297,7 +294,7 @@ class SettingsDialog(QDialog):
         
         settings = load_settings()
 
-        ram_groupbox = QGroupBox("RAM Allocation")
+        ram_groupbox = QGroupBox(self.tr.get("ram_allocation", "RAM Allocation"))
         ram_layout = QVBoxLayout()
         self.ram_slider = QSlider(Qt.Horizontal)
         self.ram_slider.setMinimum(512)
@@ -313,7 +310,7 @@ class SettingsDialog(QDialog):
         ram_groupbox.setLayout(ram_layout)
         general_layout.addWidget(ram_groupbox)
 
-        jvm_groupbox = QGroupBox("JVM Arguments")
+        jvm_groupbox = QGroupBox(self.tr.get("jvm_args", "JVM Arguments"))
         jvm_layout = QVBoxLayout()
         self.jvm_text_edit = QPlainTextEdit()
         self.jvm_text_edit.setPlaceholderText("")
@@ -324,13 +321,13 @@ class SettingsDialog(QDialog):
         jvm_args_str = " ".join(settings.get("jvm_args", []))
         self.jvm_text_edit.setPlainText(jvm_args_str)
 
-        filter_groupbox = QGroupBox("Filter Versions")
+        filter_groupbox = QGroupBox(self.tr.get("filters", "Filter Versions"))
         filter_layout = QVBoxLayout()
-        self.release_checkbox = QCheckBox("Release")
-        self.snapshot_checkbox = QCheckBox("Snapshot")
-        self.beta_checkbox = QCheckBox("Beta")
-        self.alpha_checkbox = QCheckBox("Alpha")
-        self.installed_checkbox = QCheckBox("Installed Versions")
+        self.release_checkbox = QCheckBox(self.tr.get("release", "Release"))
+        self.snapshot_checkbox = QCheckBox(self.tr.get("snapshot", "Snapshot"))
+        self.beta_checkbox = QCheckBox(self.tr.get("beta", "Beta"))
+        self.alpha_checkbox = QCheckBox(self.tr.get("alpha", "Alpha"))
+        self.installed_checkbox = QCheckBox(self.tr.get("installed", "Installed"))
 
         current_filters = settings.get("filters", {})
         self.release_checkbox.setChecked(current_filters.get("release", True))
@@ -346,26 +343,42 @@ class SettingsDialog(QDialog):
         filter_layout.addWidget(self.installed_checkbox)
         filter_groupbox.setLayout(filter_layout)
         general_layout.addWidget(filter_groupbox)
-
+        
         general_tab.setLayout(general_layout)
 
         dev_tab = QWidget()
-        dev_layout = QVBoxLayout()
+        dev_layout = QVBoxLayout(dev_tab)
         
-        self.dev_console_checkbox = QCheckBox("Dev Console")
+        # Language selection
+        lang_layout = QHBoxLayout()
+        lang_label = QLabel("Language:")
+        self.lang_combo = QComboBox()
+        available_langs = list_available_languages()
+        self.lang_codes = list(available_langs.keys())
+        for code in self.lang_codes:
+            self.lang_combo.addItem(available_langs[code])
+        lang_layout.addWidget(lang_label)
+        lang_layout.addWidget(self.lang_combo)
+        dev_layout.addLayout(lang_layout)
+        if settings.get("language", "en_us") in self.lang_codes:
+            self.lang_combo.setCurrentIndex(self.lang_codes.index(settings.get("language", "en_us")))
+        else:
+            self.lang_combo.setCurrentIndex(0)
+
+
+        self.dev_console_checkbox = QCheckBox(self.tr.get("dev_console", "Dev Console"))
         self.dev_console_checkbox.setChecked(settings.get("dev_console", False))
         dev_layout.addWidget(self.dev_console_checkbox)
 
-        self.hide_on_launch_checkbox = QCheckBox("Don't hide launcher when running Minecraft")
+        self.hide_on_launch_checkbox = QCheckBox(self.tr.get("hide_launcher", "Don't hide launcher when running Minecraft"))
         self.hide_on_launch_checkbox.setChecked(not settings.get("hide_on_launch", True))
         dev_layout.addWidget(self.hide_on_launch_checkbox)
 
-        self.discord_rpc_checkbox = QCheckBox("Show status launcher in Discord")
+        self.discord_rpc_checkbox = QCheckBox(self.tr.get("discord_rpc", "Show status launcher in Discord"))
         self.discord_rpc_checkbox.setChecked(settings.get("discord_rpc", True))
         dev_layout.addWidget(self.discord_rpc_checkbox)
 
         dev_layout.addStretch()
-        dev_tab.setLayout(dev_layout)
         
         about_tab = QWidget()
         about_layout = QVBoxLayout()
@@ -375,13 +388,13 @@ class SettingsDialog(QDialog):
         launcher_name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         about_layout.addWidget(launcher_name_label)
 
-        creator_label = QLabel("Creator: LunarMoon")
+        creator_label = QLabel(self.tr.get("creator", "Creator: LunarMoonDLCT"))
         creator_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         about_layout.addWidget(creator_label)
         
         about_layout.addSpacing(20)
 
-        libraries_title = QLabel("Third-Party Libraries:")
+        libraries_title = QLabel(self.tr.get("third_party_libs", "Third-Party Libraries:"))
         libraries_title.setFont(QFont("Segoe UI", 12, QFont.Bold))
         about_layout.addWidget(libraries_title)
         
@@ -397,23 +410,22 @@ class SettingsDialog(QDialog):
         libraries_list.setMinimumHeight(120)
         about_layout.addWidget(libraries_list)
 
-        source_code_title = QLabel("Source Code Launcher:")
+        source_code_title = QLabel(self.tr.get("source_code", "Source Code Launcher:"))
         source_code_title.setFont(QFont("Segoe UI", 12, QFont.Bold))
         about_layout.addWidget(source_code_title)
 
-        self.source_code_button = QPushButton("Open GitHub Repository")
+        self.source_code_button = QPushButton(self.tr.get("open_github", "Open GitHub Repository"))
         self.source_code_button.clicked.connect(self.open_github_link)
         about_layout.addWidget(self.source_code_button)
 
         about_layout.addStretch()
         about_tab.setLayout(about_layout)
 
+        tabs.addTab(general_tab, self.tr.get("general_tab", "General"))
+        tabs.addTab(dev_tab, self.tr.get("launcher_settings_tab", "Launcher Setting"))
+        tabs.addTab(about_tab, self.tr.get("about_tab", "About Launcher"))
 
-        tabs.addTab(general_tab, "General")
-        tabs.addTab(dev_tab, "Launcher Setting")
-        tabs.addTab(about_tab, "About Launcher")
-
-        save_button = QPushButton("Save Settings")
+        save_button = QPushButton(self.tr.get("save_settings", "Save Settings"))
         save_button.clicked.connect(self.save_and_close)
 
         layout = QVBoxLayout()
@@ -422,7 +434,7 @@ class SettingsDialog(QDialog):
         self.setLayout(layout)
 
     def save_and_close(self):
-        old_settings = load_settings()
+        old_settings = load_settings() # To check for language change
         
         ram_mb = self.ram_slider.value()
         
@@ -434,10 +446,10 @@ class SettingsDialog(QDialog):
                     os.makedirs(mc_path)
                     print(f"Created new Minecraft directory: {mc_path}")
                 except Exception as e:
-                    QMessageBox.critical(self, "Creation Failed", f"Failed to create directory: {mc_dir}\nError: {e}")
+                    QMessageBox.critical(self, self.tr.get("create_dir_failed", "Creation Failed"), f"Failed to create directory: {mc_dir}\nError: {e}")
                     return
         else:
-            QMessageBox.warning(self, "Invalid Path", "Minecraft directory path cannot be empty.")
+            QMessageBox.warning(self, self.tr.get("invalid_path", "Invalid Path"), "Minecraft directory path cannot be empty.")
             return
         
         filters = {
@@ -452,6 +464,8 @@ class SettingsDialog(QDialog):
         hide_on_launch = not self.hide_on_launch_checkbox.isChecked()
         jvm_args = self.jvm_text_edit.toPlainText().strip().split()
         discord_rpc_enabled = self.discord_rpc_checkbox.isChecked()
+        
+        language = self.lang_codes[self.lang_combo.currentIndex()]
 
         save_settings(
             ram_mb=ram_mb, 
@@ -460,10 +474,14 @@ class SettingsDialog(QDialog):
             dev_console=dev_console_enabled, 
             hide_on_launch=hide_on_launch, 
             jvm_args=jvm_args,
-
-            discord_rpc=discord_rpc_enabled
+            discord_rpc=discord_rpc_enabled,
+            language=language
         )
         
+        if old_settings.get("language") != language:
+            QMessageBox.information(self, "Language Changed", "Please restart the launcher to apply the new language.")
+            self.parent().close()
+
         if dev_console_enabled and self.parent().dev_console.isHidden():
             self.parent().dev_console.show()
         elif not dev_console_enabled and self.parent().dev_console.isVisible():
@@ -479,7 +497,7 @@ class SettingsDialog(QDialog):
         webbrowser.open("https://github.com/LunarMoonDLCT/MaZult-Launcher")
 
     def update_ram_label(self, value):
-        self.ram_label.setText(f"Allocated RAM: {value} MB")
+        self.ram_label.setText(self.tr.get("ram_allocated", "Allocated RAM: {value} MB").format(value=value))
 
     def browse_mc_dir(self):
         dir_path = QFileDialog.getExistingDirectory(self, "Select Minecraft Directory")
@@ -625,11 +643,12 @@ class DevConsole(QWidget):
         event.ignore()
 
 class CrashCheckDialog(QDialog):
-    def __init__(self, error_code="UNKNOWN", crash_report_path=None, parent=None):
+    def __init__(self, error_code="UNKNOWN", crash_report_path=None, parent=None, tr=None):
         super().__init__(parent)
-        self.setWindowTitle("MaZult Crash Check")
+        self.tr = tr if tr else load_language()
+        self.setWindowTitle(self.tr.get("crash_detected", "MaZult Crash Check"))
         self.setFixedSize(400, 250)
-        self.setStyleSheet("background-color: #202020; color: white;")
+        self.setStyleSheet("background-color: #202020; color: white;") # type: ignore
 
         self.layout = QVBoxLayout()
         self.label = QLabel("Uh oh, something went wrong.")
@@ -777,11 +796,11 @@ class MinecraftThread(QThread):
         event.accept()
 
 class MaZultLauncher(QWidget):
-    def show_crash_dialog(self, code, path):
-        dialog = CrashCheckDialog(code, path, self)
+    def show_crash_dialog(self, code, path): # type: ignore
+        dialog = CrashCheckDialog(code, path, self, self.tr)
         dialog.exec()
     def open_settings_dialog(self):
-        dialog = SettingsDialog(self)
+        dialog = SettingsDialog(self, self.tr)
         dialog.refreshVersions.connect(self.load_versions)
         dialog.exec()
 
@@ -790,8 +809,8 @@ class MaZultLauncher(QWidget):
 
         self.username_combo.clear()
         self.users = load_users()
-        self.username_combo.addItems(self.users)
-        self.username_combo.addItem("Manage Users...")
+        self.username_combo.addItems(self.users) # type: ignore
+        self.username_combo.addItem(self.tr.get("manage_users", "Manage Users..."))
 
         settings = load_settings()
         saved_username = settings.get("username")
@@ -812,7 +831,7 @@ class MaZultLauncher(QWidget):
         self.username_combo.blockSignals(False)
     
     def on_username_changed(self, text):
-        if text == "Manage Users...":
+        if text == self.tr.get("manage_users", "Manage Users..."):
             dialog = UserManagerDialog(self)
             dialog.exec_()
             self.update_username_combo()
@@ -1004,6 +1023,9 @@ class MaZultLauncher(QWidget):
         self.download_thread = None
         self.update_info = update_info
 
+        settings = load_settings()
+        self.lang_code = settings.get("language", "en_us")
+        self.tr = load_language(self.lang_code)
 
 
         self.dev_console = DevConsole(self, styles=self.load_styles())
@@ -1011,8 +1033,8 @@ class MaZultLauncher(QWidget):
             self.dev_console.show()
 
         self.rpc = None
-
-        self.setWindowTitle("MaZult Launcher")
+        
+        self.setWindowTitle(self.tr.get("launcher_title", "MaZult Launcher"))
         self.setWindowIcon(QIcon(str(self.icon_path)))
         self.setMinimumSize(900, 520)
         self.setStyleSheet(self.load_styles())
@@ -1027,25 +1049,25 @@ class MaZultLauncher(QWidget):
         sidebar.setSpacing(20)
         sidebar.setContentsMargins(20, 20, 20, 20)
         
-        username_label = QLabel("Username:")
+        username_label = QLabel(self.tr.get("username", "Username:"))
         self.username_combo = QComboBox()
         self.username_combo.currentTextChanged.connect(self.on_username_changed)
         self.update_username_combo()
         
         sidebar.addWidget(username_label)
         sidebar.addWidget(self.username_combo)
-        
-        self.update_button = QPushButton("Update Launcher")
+
+        self.update_button = QPushButton(self.tr.get("update_launcher", "Update Launcher"))
         self.update_button.clicked.connect(self.on_update_clicked)
         self.update_button.setVisible(False)
         self.update_button.setStyleSheet("background-color: #e74c3c; color: white; border: none; font-weight: bold; font-size: 14px; border-radius: 4px;")
         
         if self.update_info:
             self.update_button.setVisible(True)
-
+        
         sidebar.addWidget(self.update_button)
 
-        self.settings_button_left = QPushButton("Settings")
+        self.settings_button_left = QPushButton(self.tr.get("settings", "Settings"))
         self.settings_button_left.setFixedSize(160, 40)
         self.settings_button_left.clicked.connect(self.open_settings_dialog)
         self.settings_button_left.setStyleSheet("text-align: left; padding: 10px; background-color: #353535; border: 1px solid #404040;")
@@ -1066,7 +1088,7 @@ class MaZultLauncher(QWidget):
         title = QLabel("Minecraft")
         title.setFont(QFont("Segoe UI", 24, QFont.Bold))
 
-        open_folder_button = QPushButton("📂")
+        open_folder_button = QPushButton(self.tr.get("open_folder", "📂"))
         open_folder_button.setFixedSize(30, 30)
         open_folder_button.setStyleSheet("""
             QPushButton {
@@ -1102,7 +1124,7 @@ class MaZultLauncher(QWidget):
         header_layout.addWidget(refresh_button)
         content_layout.addLayout(header_layout)
 
-        version_label = QLabel("Select Version:")
+        version_label = QLabel(self.tr.get("select_version", "Select Version:"))
         self.version_combo = QComboBox()
         self.version_combo.currentIndexChanged.connect(self.on_version_changed)
         self.load_versions()
@@ -1119,8 +1141,8 @@ class MaZultLauncher(QWidget):
         self.progress_bar.hide()
         content_layout.addWidget(self.progress_label)
         content_layout.addWidget(self.progress_bar)
-
-        self.play_button = QPushButton("Play")
+        
+        self.play_button = QPushButton(self.tr.get("play", "Play"))
         self.play_button.setObjectName("playButton")
         self.play_button.setStyleSheet(self.load_styles())
         self.play_button.clicked.connect(self.on_play_clicked)
@@ -1212,8 +1234,8 @@ class MaZultLauncher(QWidget):
 
     def on_update_clicked(self):
         if self.update_info:
-            latest_version, download_url = self.update_info
-            reply = QMessageBox.question(self, "Update Available",
+            latest_version, download_url = self.update_info # type: ignore
+            reply = QMessageBox.question(self, self.tr.get("update_available", "Update Available"),
                                          f"A new version is available: {latest_version}. Do you want to download the update?",
                                          QMessageBox.Yes | QMessageBox.No)
             if reply == QMessageBox.Yes:
@@ -1228,7 +1250,7 @@ class MaZultLauncher(QWidget):
             self.minecraft_thread = None
 
         if self.play_button and not self.play_button.parent() is None:
-            self.play_button.setText("Play")
+            self.play_button.setText(self.tr.get("play", "Play"))
             self.play_button.setEnabled(True)
             self.play_button.setStyleSheet(self.load_styles())
             self.dev_console.set_kill_button_enabled(False)
@@ -1445,6 +1467,21 @@ class MaZultLauncher(QWidget):
             background-color: #404040;
         }
         
+        QProgressBar {
+            background-color: #2D2D2D;
+            border: 1px solid #404040;
+            border-radius: 5px;
+            text-align: center;
+            color: #E0E0E0;
+            height: 12px;
+        }
+        QProgressBar::chunk {
+            background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #3b2f78, stop:1 #e133a0);
+            border-radius: 4px;
+            margin: 1px;
+        }
+
+
         QGroupBox {
             font-weight: bold;
             margin-top: 10px;
@@ -1547,7 +1584,7 @@ class MaZultLauncher(QWidget):
         self.progress_bar.hide()
 
         if self.download_thread._cancelled:
-            print("Download process was cancelled.")
+            print(self.tr.get("download_cancelled_log", "Download process was cancelled."))
             self.reset_after_cancel()
             return
 
@@ -1569,7 +1606,7 @@ class MaZultLauncher(QWidget):
             print("Launching with command:", " ".join(command))
             self.update_rpc_game(selected_version_id)
 
-            self.play_button.setText("Launching...")
+            self.play_button.setText(self.tr.get("launching", "Launching..."))
             self.play_button.setEnabled(False)
             self.play_button.setStyleSheet(self.load_styles())
 
@@ -1589,41 +1626,39 @@ class MaZultLauncher(QWidget):
             self.minecraft_thread.start()
 
         except Exception as e:
-            QMessageBox.critical(self, "Launch Error", f"Failed to launch Minecraft:\n{e}")
+            QMessageBox.critical(self, self.tr.get("launch_error", "Launch Error"), f"{self.tr.get('launch_error_message', 'Failed to launch Minecraft:')}\n{e}")
             self.dev_console.set_kill_button_enabled(False)
-            self.play_button.setText("Play")
+            self.play_button.setText(self.tr.get("play", "Play"))
             self.play_button.setEnabled(True)
             self.play_button.setStyleSheet(self.load_styles())
             self.show()
-
         if self.download_thread:
-            self.download_thread.deleteLater()
             self.download_thread = None
 
 
     def reset_after_cancel(self):
         self.is_downloading = False
-        self.progress_label.hide()
+        self.progress_label.hide() # type: ignore
         self.progress_bar.hide()
-        self.play_button.setText("Play")
+        self.play_button.setText(self.tr.get("play", "Play"))
         self.play_button.setEnabled(True)
         self.play_button.setStyleSheet(self.load_styles())
         self.update_rpc_menu()
 
     def on_play_clicked(self):
-        print("[DEBUG] Thread created")
+        print(self.tr.get("debug_thread_created", "[DEBUG] Thread created"))
         # Nếu thread Minecraft cũ vẫn còn, thì hủy trước khi tạo cái mới
         if self.minecraft_thread and self.minecraft_thread.isRunning():
             try:
-                print("[WARN] Previous Minecraft thread still running, attempting cleanup...")
+                print(self.tr.get("warn_previous_thread_running", "[WARN] Previous Minecraft thread still running, attempting cleanup..."))
                 self.minecraft_thread.terminate()
-                self.minecraft_thread.wait(2000)
+                self.minecraft_thread.wait(2000) # type: ignore
                 self.minecraft_thread = None
             except Exception as e:
-                print(f"[ERROR] Failed to cleanup old thread: {e}")
+                print(f"{self.tr.get('error_cleanup_old_thread', '[ERROR] Failed to cleanup old thread:')} {e}")
 
         if self.is_downloading and self.download_thread and self.download_thread.isRunning():
-            print("Download canceled by user.")
+            print(self.tr.get("download_cancelled_by_user", "Download canceled by user."))
             self.download_thread.cancel()
             
             self.play_button.setEnabled(False)
@@ -1642,13 +1677,13 @@ class MaZultLauncher(QWidget):
             return
 
         username = self.username_combo.currentText()
-        if username == "Manage Users...":
-            QMessageBox.warning(self, "Invalid User", "Please select a valid username.")
+        if username == self.tr.get("manage_users", "Manage Users..."):
+            QMessageBox.warning(self, self.tr.get("invalid_path", "Invalid User"), self.tr.get("no_user_selected", "Please select a valid username."))
             return
 
         selected_version_id = self.version_combo.currentData()
         if not selected_version_id:
-            QMessageBox.warning(self, "No Version Selected", "Please select a Minecraft version to play.")
+            QMessageBox.warning(self, self.tr.get("no_version_selected", "No Version Selected"), self.tr.get("no_version_selected", "Please select a Minecraft version to play."))
             return
         
         settings = load_settings()
@@ -1656,7 +1691,7 @@ class MaZultLauncher(QWidget):
         
         user_uuid = get_mojang_uuid(username)
         if user_uuid is None:
-            print(f"Cannot get Mojang UUID for {username}. Using offline UUID.")
+            print(self.tr.get("mojang_uuid_offline_fallback", "Cannot get Mojang UUID for {username}. Using offline UUID.").format(username=username))
             user_uuid = str(uuid.uuid3(uuid.NAMESPACE_URL, "OfflinePlayer:" + username))
         user_token = user_uuid
 
@@ -1669,7 +1704,7 @@ class MaZultLauncher(QWidget):
 
         for arg in jvm_args:
             if arg.startswith("-Xmx"):
-                print("Ignoring user-provided -Xmx argument.")
+                print(self.tr.get("ignoring_xmx_arg", "Ignoring user-provided -Xmx argument."))
             elif arg.startswith("-Xms"):
                 final_jvm_args.append(arg)
                 overridden_args.add("Xms")
@@ -1697,16 +1732,16 @@ class MaZultLauncher(QWidget):
 
         self.progress_label.show()
         self.progress_bar.show()
-        self.progress_label.setText("Preparing download...")
+        self.progress_label.setText(self.tr.get("preparing_download", "Preparing download..."))
         self.progress_bar.setValue(0)
         self.update_rpc_downloading(selected_version_id)
 
         self.is_downloading = True
-        self.play_button.setText("Cancel")
+        self.play_button.setText(self.tr.get("cancel", "Cancel"))
         self.play_button.setEnabled(True)
         self.play_button.setStyleSheet(self.load_styles())
 
-        self.download_thread = DownloadThread(selected_version_id, minecraft_directory)
+        self.download_thread = DownloadThread(selected_version_id, minecraft_directory, self.tr)
         self.download_thread.status_signal.connect(self.on_set_status)
         self.download_thread.value_signal.connect(self.on_set_progress)
         self.download_thread.max_signal.connect(self.on_set_max)
@@ -1725,19 +1760,20 @@ class DownloadThread(QThread):
     max_signal = Signal(int)
     finished_signal = Signal(bool) 
 
-    def __init__(self, version_id, minecraft_directory):
-        print("[DEBUG] DownloadThread init")
+    def __init__(self, version_id, minecraft_directory, tr=None):
         super().__init__()
         self.version_id = version_id
         self.minecraft_directory = minecraft_directory
         self._cancelled = False
         self.is_running = True
+        self.tr = tr if tr else {}
+        print(self.tr.get("debug_download_thread_init", "[DEBUG] DownloadThread init"))
 
     def cancel(self):
         self._cancelled = True
         
     def run(self):
-        print("[DEBUG] DownloadThread run start")
+        print(self.tr.get("debug_download_thread_run_start", "[DEBUG] DownloadThread run start"))
         try:
             minecraft_launcher_lib.install.install_minecraft_version(
                 self.version_id,
@@ -1755,9 +1791,9 @@ class DownloadThread(QThread):
                 self.finished_signal.emit(False)
         except Exception as e:
             if str(e) == "Download cancelled":
-                print(f"Download thread finished because it was cancelled.")
+                print(self.tr.get("download_thread_cancelled_log", "Download thread finished because it was cancelled."))
             else:
-                print(f"Download error: {e}")
+                print(f"{self.tr.get('download_error_log', 'Download error:')} {e}")
             self.finished_signal.emit(False)
         finally:
             self.is_running = False
@@ -1770,13 +1806,15 @@ class DownloadThread(QThread):
 
 
 class LoadingWindow(QWidget):
-    def __init__(self):
+    def __init__(self, tr=None):
         super().__init__()
+        self.tr = tr if tr else load_language()
+
         self.appdata_dir = get_appdata_path()
         self.icon_path = resource_path("icon.ico")
         
         self.setFixedSize(400, 200)
-        self.setWindowTitle("Loading...")
+        self.setWindowTitle(self.tr.get("launcher_title", "MaZult Launcher"))
         self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint)
         self.setStyleSheet("background-color: #202020;")
         if os.path.exists(self.icon_path):
@@ -1785,12 +1823,12 @@ class LoadingWindow(QWidget):
         layout = QVBoxLayout()
         layout.setAlignment(Qt.AlignCenter)
 
-        self.title_label = QLabel("MaZult Launcher")
+        self.title_label = QLabel(self.tr.get("launcher_title", "MaZult Launcher"))
         self.title_label.setFont(QFont("Segoe UI", 20, QFont.Bold))
         self.title_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.title_label)
 
-        self.status_label = QLabel("Initializing...")
+        self.status_label = QLabel(self.tr.get("initializing", "Initializing..."))
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.status_label)
 
@@ -1822,61 +1860,88 @@ class LoadingWindow(QWidget):
         self.timer.timeout.connect(self.update_loading_state)
         self.timer.start(100)
         self.show()
-        if not sys.platform.startswith('win32'):
-            self.check_for_updates()
+        
 
     def check_for_updates(self):
         self.update_thread = QThread()
         self.update_checker = UpdateChecker(LAUNCHER_VERSION)
         self.update_checker.moveToThread(self.update_thread)
-        self.update_thread.started.connect(self.update_checker.run)
-        self.update_checker.update_available.connect(self.handle_update_available)
+        self.update_checker.update_found.connect(self.handle_update_found)
+        self.update_checker.no_update.connect(self.handle_no_update)
+        self.update_checker.finished.connect(self.update_checker.deleteLater)
         self.update_checker.finished.connect(self.update_thread.quit)
+        self.update_thread.started.connect(self.update_checker.run)
         self.update_thread.start()
 
-    def handle_update_available(self, latest_version, download_url):
+    def handle_update_found(self, latest_version, download_url):
         self.update_info = (latest_version, download_url)
         self.timer.stop()
-        
-        reply = QMessageBox.question(self, "Update Available",
-                                     f"New version {latest_version}. Do you want to update?",
-                                     QMessageBox.Yes | QMessageBox.No)
-        
-        if reply == QMessageBox.Yes:
-            webbrowser.open(download_url)
-            self.close()
-            QApplication.instance().quit()
-        else:
-            self.timer.start(100)
-            self.update_progress(100, "Preparing GUI...")
+        self.launch_main_window()
 
+    def handle_no_update(self):
+        # Nếu không có update, chỉ cần đảm bảo timer tiếp tục chạy để hoàn thành loading
+        if not self.timer.isActive():
+            self.timer.start(100)
 
     def update_loading_state(self):
+        # Nếu đã có kết quả từ việc check update, không cần chạy thanh loading nữa
+        if self.update_info is not None:
+            self.timer.stop()
+            return
+
         if self.progress < 100:
             self.progress += 10
             if self.progress < 30:
-                self.update_progress(self.progress, "Checking for updates...")
+                self.update_progress(self.progress, self.tr.get("checking_updates", "Checking for updates..."))
             elif self.progress < 60:
-                self.update_progress(self.progress, "Loading configuration...")
+                self.update_progress(self.progress, self.tr.get("loading_config", "Loading configuration..."))
             elif self.progress < 90:
-                self.update_progress(self.progress, "Preparing GUI...")
+                self.update_progress(self.progress, self.tr.get("preparing_gui", "Preparing GUI..."))
         else:
             self.timer.stop()
-            self.update_progress(100, "Almost done...")
-            QTimer.singleShot(700, lambda: (
-                setattr(self, "main_window", MaZultLauncher(self.update_info)),
-                self.main_window.show(),
-                self.close()
-            ))
+            self.launch_main_window()
 
+    def launch_main_window(self):
+        self.update_progress(100, "Almost done...")
+        self.main_window = MaZultLauncher(self.update_info)
+        self.main_window.show()
+        self.close()
 
     def update_progress(self, value, text=""):
         self.progress_bar.setValue(value)
         self.status_label.setText(text)
         QApplication.instance().processEvents()
 
+class UpdateChecker(QObject):
+    update_found = Signal(str, str)
+    no_update = Signal()
+    finished = Signal()
+
+    def __init__(self, current_version, parent=None):
+        super().__init__(parent)
+        self.current_version = current_version
+
+    def run(self):
+        try:
+            response = requests.get(GITHUB_API_URL, timeout=10)
+            if response.status_code == 200:
+                release_info = response.json()
+                latest_version_tag = release_info.get("tag_name")
+                universal_asset = next((asset for asset in release_info.get("assets", []) if "Universal.zip" in asset.get("name", "")), None)
+                if latest_version_tag and universal_asset and packaging.parse(latest_version_tag) > packaging.parse(self.current_version):
+                    self.update_found.emit(latest_version_tag, universal_asset["browser_download_url"])
+                    return
+        except requests.exceptions.RequestException as e:
+            print(f"Network error while checking for updates: {e}")
+        finally:
+            self.no_update.emit()
+            self.finished.emit()
+
 if __name__ == "__main__":
     def global_exception_hook(exctype, value, tb):
+        settings = load_settings()
+        tr = load_language(settings.get("language", "en_us"))
+
         error_text = "".join(traceback.format_exception(exctype, value, tb))
         try:
             log_dir = get_appdata_path() / "logs"
@@ -1890,8 +1955,8 @@ if __name__ == "__main__":
         try:
             msg = QMessageBox()
             msg.setIcon(QMessageBox.Critical)
-            msg.setWindowTitle("MaZult Launcher - Crash Detected")
-            msg.setText("The launcher has encountered a critical error and will close.")
+            msg.setWindowTitle(tr.get("launcher_title", "MaZult Launcher") + " - " + tr.get("crash_detected", "Crash Detected"))
+            msg.setText(tr.get("critical_error", "The launcher has encountered a critical error and will close."))
             msg.setInformativeText(str(value))
             msg.setDetailedText(error_text)
             msg.setStandardButtons(QMessageBox.Ok)
@@ -1904,6 +1969,9 @@ if __name__ == "__main__":
     sys.excepthook = global_exception_hook
 
     app = QApplication(sys.argv)
+
+    settings = load_settings()
+    tr = load_language(settings.get("language", "en_us"))
 
     appdata_path = get_appdata_path()
     os.makedirs(appdata_path, exist_ok=True)
@@ -1934,15 +2002,15 @@ if __name__ == "__main__":
                 sys.exit(0)
             except Exception as e:
                 print(f"Error when Launching {e}")
-                loading_window = LoadingWindow()
+                loading_window = LoadingWindow(tr)
                 loading_window.start_loading_animation()
                 sys.exit(app.exec())
         else:
             print("No updater, run default app")
-            loading_window = LoadingWindow()
+            loading_window = LoadingWindow(tr)
             loading_window.start_loading_animation()
             sys.exit(app.exec())
     else: 
-        loading_window = LoadingWindow()
+        loading_window = LoadingWindow(tr)
         loading_window.start_loading_animation()
         sys.exit(app.exec())
