@@ -1,4 +1,4 @@
-## 📝 MaZultLauncher
+## MaZultLauncher
 
 An **Open-source Minecraft Launcher**.
 
@@ -6,7 +6,7 @@ An **Open-source Minecraft Launcher**.
 
 ---
 
-## ✨ Key Features
+## Features
 
 * **Easy to use:** Simple and intuitive interface.
 * **Auto update:** Ensures you always run the latest version.
@@ -14,7 +14,7 @@ An **Open-source Minecraft Launcher**.
 
 ---
 
-## 🛠️ Installation
+## Installation
 
 ### 🖥️ Windows
 
@@ -66,6 +66,6 @@ This version requires **Python 3** to be installed on your system.
 
 ---
 
-## ❓ Troubleshooting
+## Troubleshooting
 
 If you encounter any errors or have questions, please feel free to open a **new Issue** on GitHub.
