@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QPushButton, QComboBox, QFrame, QDialog, QListView, QAbstractItemView, QCheckBox, QMessageBox,
     QTabWidget, QSlider, QScrollArea, QListWidget, QListWidgetItem, QInputDialog, QDialogButtonBox,
     QGroupBox, QPlainTextEdit, QProgressBar, QGraphicsView, QGraphicsScene, QGraphicsPixmapItem,
-    QGraphicsRectItem, QGraphicsItem, QFileDialog
+    QGraphicsRectItem, QGraphicsItem, QFileDialog, QRadioButton, QStackedWidget
 )
 from PySide6.QtGui import (
     QPixmap, QIcon, QStandardItemModel, QStandardItem, QFont, QPainter, QColor, QImage,
@@ -102,7 +102,7 @@ class CropBox(QGraphicsRectItem):
 SETTINGS_FILE = get_appdata_path() / "settings.json"
 USERS_FILE = get_appdata_path() / "users.json"
 
-def save_settings(username=None, version_id=None, ram_mb=None, mc_dir=None, filters=None, dev_console=None, hide_on_launch=None, jvm_args=None, discord_rpc=None, language=None):
+def save_settings(username=None, version_id=None, ram_mb=None, mc_dir=None, filters=None, dev_console=None, hide_on_launch=None, jvm_args=None, discord_rpc=None, language=None, java_mode=None, java_path=None):
     data = load_settings()
     if username is not None:
         data["username"] = username
@@ -124,6 +124,10 @@ def save_settings(username=None, version_id=None, ram_mb=None, mc_dir=None, filt
         data["discord_rpc"] = discord_rpc
     if language is not None:
         data["language"] = language
+    if java_mode is not None:
+        data["java_mode"] = java_mode
+    if java_path is not None:
+        data["java_path"] = java_path
 
     os.makedirs(get_appdata_path(), exist_ok=True)
     with open(SETTINGS_FILE, "w") as f:
@@ -148,7 +152,9 @@ def load_settings():
         "hide_on_launch": True,
         "jvm_args": [],
         "discord_rpc": True,
-        "language": "en_us"
+        "language": "en_us",
+        "java_mode": "default",
+        "java_path": ""
     }
 
 def save_users(users):
@@ -268,6 +274,37 @@ def get_mojang_uuid(username):
         print(f"Network error while fetching Mojang UUID: {e}")
         return None
 
+# --- Detect cross-platform Java executable ---
+def find_java_executable(java_dir):
+    if not java_dir:
+        return None
+
+    # Windows .exe
+    win_candidates = [
+        os.path.join(java_dir, "bin", "javaw.exe"),
+        os.path.join(java_dir, "bin", "java.exe"),
+        os.path.join(java_dir, "javaw.exe"),
+        os.path.join(java_dir, "java.exe"),
+    ]
+
+    # Linux/macOS
+    unix_candidates = [
+        os.path.join(java_dir, "bin", "java"),
+        os.path.join(java_dir, "java"),
+    ]
+
+    # Combine depending on OS
+    candidates = []
+    if sys.platform.startswith("win32"):
+        candidates = win_candidates
+    else:
+        candidates = unix_candidates
+
+    for path in candidates:
+        if os.path.exists(path) and os.access(path, os.X_OK):
+            return path
+    return None
+
 class SettingsDialog(QDialog):
     refreshVersions = Signal()
 
@@ -275,7 +312,7 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self.tr = tr if tr else load_language()
         self.setWindowTitle(self.tr.get("settings", "Launcher Settings"))
-        self.setMinimumSize(400, 300)
+        self.setMinimumSize(400, 570)
 
         tabs = QTabWidget()
 
@@ -290,8 +327,7 @@ class SettingsDialog(QDialog):
         mc_dir_layout.addWidget(mc_dir_label)
         mc_dir_layout.addWidget(self.mc_dir_input)
         mc_dir_layout.addWidget(self.mc_dir_browse_btn)
-        general_layout.addLayout(mc_dir_layout)
-        
+
         settings = load_settings()
 
         ram_groupbox = QGroupBox(self.tr.get("ram_allocation", "RAM Allocation"))
@@ -308,7 +344,60 @@ class SettingsDialog(QDialog):
         ram_layout.addWidget(self.ram_label)
         ram_layout.addWidget(self.ram_slider)
         ram_groupbox.setLayout(ram_layout)
-        general_layout.addWidget(ram_groupbox)
+
+        # Java selection
+        java_groupbox = QGroupBox("Java Runtime")
+        java_layout = QVBoxLayout()
+
+        self.java_default_radio = QRadioButton("Use default Java (launcher built-in)")
+        self.java_custom_radio = QRadioButton("Use custom Java path")
+        self.java_default_radio.toggled.connect(self.update_java_ui_state)
+        self.java_custom_radio.toggled.connect(self.update_java_ui_state)
+
+        self.java_path_input = QLineEdit()
+        self.java_path_input.setPlaceholderText("Path to Java folder (contains java.exe)")
+        self.java_path_input.setStyleSheet("""
+            QLineEdit:disabled {
+                background-color: #3a3a3a;
+                color: #777;
+                border: 1px solid #555;
+            }
+        """)
+        self.java_browse_btn = QPushButton("Browse")
+        self.java_browse_btn.setStyleSheet("""
+            QPushButton:disabled {
+                background-color: #444;
+                color: #777;
+                border: 1px solid #555;
+            }
+        """)
+
+
+        java_radio_layout = QHBoxLayout()
+        java_radio_layout.addWidget(self.java_default_radio)
+        java_radio_layout.addWidget(self.java_custom_radio)
+
+        java_path_layout = QHBoxLayout()
+        java_path_layout.addWidget(self.java_path_input)
+        java_path_layout.addWidget(self.java_browse_btn)
+
+        java_layout.addLayout(java_radio_layout)
+        java_layout.addLayout(java_path_layout)
+        java_groupbox.setLayout(java_layout)
+
+        # Load saved settings
+        java_mode = settings.get("java_mode", "default")
+        java_path = settings.get("java_path", "")
+
+        if java_mode == "default":
+            self.java_default_radio.setChecked(True)
+        else:
+            self.java_custom_radio.setChecked(True)
+
+        self.update_java_ui_state()
+
+        self.java_path_input.setText(java_path)
+        self.java_browse_btn.clicked.connect(self.browse_java_path)
 
         jvm_groupbox = QGroupBox(self.tr.get("jvm_args", "JVM Arguments"))
         jvm_layout = QVBoxLayout()
@@ -316,7 +405,6 @@ class SettingsDialog(QDialog):
         self.jvm_text_edit.setPlaceholderText("")
         jvm_layout.addWidget(self.jvm_text_edit)
         jvm_groupbox.setLayout(jvm_layout)
-        general_layout.addWidget(jvm_groupbox)
 
         jvm_args_str = " ".join(settings.get("jvm_args", []))
         self.jvm_text_edit.setPlainText(jvm_args_str)
@@ -342,9 +430,52 @@ class SettingsDialog(QDialog):
         filter_layout.addWidget(self.alpha_checkbox)
         filter_layout.addWidget(self.installed_checkbox)
         filter_groupbox.setLayout(filter_layout)
-        general_layout.addWidget(filter_groupbox)
-        
-        general_tab.setLayout(general_layout)
+
+        # --- NEW: stacked widget ---
+        self.general_pages = QStackedWidget()
+
+        # ----- PAGE 1 -----
+        page1 = QWidget()
+        page1_layout = QVBoxLayout(page1)
+        page1_layout.addLayout(mc_dir_layout)
+        page1_layout.addWidget(ram_groupbox)
+        page1_layout.addWidget(jvm_groupbox)
+        page1_layout.addWidget(filter_groupbox)
+        page1_layout.addStretch()
+        self.general_pages.addWidget(page1)
+
+        # ----- PAGE 2 -----
+        page2 = QWidget()
+        page2_layout = QVBoxLayout(page2)
+        page2_layout.addWidget(java_groupbox)
+        page2_layout.addStretch()
+        self.general_pages.addWidget(page2)
+
+        general_layout.addWidget(self.general_pages)
+
+        # --- Navigation Buttons ---
+        nav_layout = QHBoxLayout()
+        self.back_btn = QPushButton("← " + self.tr.get("back_button", "Back"))
+        self.next_btn = QPushButton(self.tr.get("next_button", "Next") + " →")
+        self.page_label = QLabel("Page 1 / 2")
+        self.page_label.setAlignment(Qt.AlignCenter)
+        self.page_label.setStyleSheet("font-weight: bold;")
+
+
+        self.back_btn.clicked.connect(self.go_general_prev)
+        self.next_btn.clicked.connect(self.go_general_next)
+
+        nav_layout = QHBoxLayout()
+
+        nav_layout.addWidget(self.back_btn)
+        nav_layout.addStretch()
+        nav_layout.addWidget(self.page_label)
+        nav_layout.addStretch()
+        nav_layout.addWidget(self.next_btn)
+
+        general_layout.addLayout(nav_layout)
+        self.update_page_label()
+
 
         dev_tab = QWidget()
         dev_layout = QVBoxLayout(dev_tab)
@@ -432,6 +563,25 @@ class SettingsDialog(QDialog):
         layout.addWidget(tabs)
         layout.addWidget(save_button)
         self.setLayout(layout)
+        layout.addWidget(save_button)
+        self.setLayout(layout)
+
+    def update_page_label(self):
+        current = self.general_pages.currentIndex() + 1
+        total = self.general_pages.count()
+        self.page_label.setText(f"Page {current} / {total}")
+
+    def go_general_next(self):
+        idx = self.general_pages.currentIndex()
+        if idx < self.general_pages.count() - 1:
+            self.general_pages.setCurrentIndex(idx + 1)
+            self.update_page_label()
+
+    def go_general_prev(self):
+        idx = self.general_pages.currentIndex()
+        if idx > 0:
+            self.general_pages.setCurrentIndex(idx - 1)
+            self.update_page_label()
 
     def save_and_close(self):
         old_settings = load_settings() # To check for language change
@@ -464,8 +614,25 @@ class SettingsDialog(QDialog):
         hide_on_launch = not self.hide_on_launch_checkbox.isChecked()
         jvm_args = self.jvm_text_edit.toPlainText().strip().split()
         discord_rpc_enabled = self.discord_rpc_checkbox.isChecked()
-        
-        language = self.lang_codes[self.lang_combo.currentIndex()]
+
+        # Java settings
+        if self.java_default_radio.isChecked():
+            java_mode = "default"
+            java_path = ""
+        else:
+            java_mode = "custom"
+            java_path = self.java_path_input.text().strip()
+
+
+        # Prevent crash when no language files exist
+        if len(self.lang_codes) == 0:
+            language = "en_us"
+        else:
+            idx = self.lang_combo.currentIndex()
+            if idx < 0 or idx >= len(self.lang_codes):
+                language = "en_us"
+            else:
+                language = self.lang_codes[idx]
 
         save_settings(
             ram_mb=ram_mb, 
@@ -475,7 +642,9 @@ class SettingsDialog(QDialog):
             hide_on_launch=hide_on_launch, 
             jvm_args=jvm_args,
             discord_rpc=discord_rpc_enabled,
-            language=language
+            language=language,
+            java_mode=java_mode,
+            java_path=java_path
         )
         
         if old_settings.get("language") != language:
@@ -503,6 +672,16 @@ class SettingsDialog(QDialog):
         dir_path = QFileDialog.getExistingDirectory(self, "Select Minecraft Directory")
         if dir_path:
             self.mc_dir_input.setText(dir_path)
+
+    def browse_java_path(self):
+        dir_path = QFileDialog.getExistingDirectory(self, "Select Java Folder")
+        if dir_path:
+            self.java_path_input.setText(dir_path)
+
+    def update_java_ui_state(self):
+        use_default = self.java_default_radio.isChecked()
+        self.java_path_input.setEnabled(not use_default)
+        self.java_browse_btn.setEnabled(not use_default)
 
 class UserManagerDialog(QDialog):
     def __init__(self, parent=None):
@@ -1589,15 +1768,29 @@ class MaZultLauncher(QWidget):
             return
 
         try:
-            version_dir = os.path.join(get_minecraft_directory(), "versions", selected_version_id)
-            jar_path = os.path.join(version_dir, f"{selected_version_id}.jar")
 
-            for _ in range(10):
-                if os.path.exists(jar_path):
-                    break
-                print("[DEBUG] Waiting for jar to exist...")
-                time.sleep(0.5)
 
+            java_mode = settings.get("java_mode", "default")
+            java_path = settings.get("java_path", "")
+
+            if java_mode == "custom":
+                if java_path and os.path.isdir(java_path):                    
+                    custom_java = find_java_executable(java_path)
+
+                    if custom_java:
+                        options["executablePath"] = custom_java
+                    else:
+                        QMessageBox.critical(
+                            self,
+                            "Java Error",
+                            "No valid Java executable found in this folder.\n"
+                            "Please check the directory.\n\n"
+                            "Supported formats:\n"
+                            "- Windows: java.exe / javaw.exe\n"
+                            "- Linux/macOS: java"
+                        )
+                        self.reset_after_cancel()
+                        return
             command = minecraft_launcher_lib.command.get_minecraft_command(
                 selected_version_id,
                 get_minecraft_directory(),
