@@ -387,7 +387,7 @@ class UpdaterApp(QWidget):
             if is_windows:
                 launcher_path = os.path.join(MAIN_APP_DIR, 'bin', LAUNCHER_EXE)
                 try:
-                    run_as_original_user([launcher_path, '--Launcher'])
+                    run_as_original_user([launcher_path, '--Launcher', '--UpdaterVer 1.3.1.2026'])
                 except (FileNotFoundError, OSError) as e:
                     self.handle_startup_error("Failed to start the application.")
                     return
