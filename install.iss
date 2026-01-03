@@ -1,16 +1,15 @@
 ; --- MaZult Launcher Inno Setup Script (64-bit only) ---
 [Setup]
 AppName=MaZult Launcher
-AppVersion=1.829.921.3
+AppVersion=1.3.1.2026
 AppPublisher=LunarMoonDLCT
-AppCopyright=© 2025 LunarMoonDLCT
+AppCopyright=© 2026 LunarMoonDLCT
 DefaultDirName={pf}\MaZult Launcher
 DefaultGroupName=MaZult Launcher
 OutputBaseFilename=MaZultLauncher_Setup
 Compression=lzma
 SolidCompression=yes
 
-; Icon cho setup và app
 SetupIconFile=app\icon.ico
 
 DisableWelcomePage=no
@@ -20,7 +19,6 @@ UninstallDisplayName=MaZult Launcher
 ArchitecturesInstallIn64BitMode=x64
 DisableDirPage=no
 
-; ✅ Dùng cái này thay vì UninstallConfirm=no
 Uninstallable=yes
 
 [Languages]
@@ -104,10 +102,10 @@ begin
     begin
       DoUninstall := True;
       RemoveData := RemoveDataCheckBox.Checked;
-      Result := True;  // tiếp tục uninstall
+      Result := True;  
     end
     else
-      Result := False; // hủy bỏ uninstall
+      Result := False; 
   finally
     Form.Free;
   end;
@@ -118,17 +116,15 @@ begin
   if not DoUninstall then
     exit;
 
-  { Xoá thư mục cài đặt }
-  DelTree(ExpandConstant('{app}'), True, True, True);
 
-  { Nếu người dùng chọn thì xoá thêm dữ liệu trong AppData }
+
   if RemoveData then
   begin
     DelTree(ExpandConstant('{userappdata}\.mazultlauncher'), True, True, True);
   end;
 
-  { Nếu thư mục app rỗng thì xoá luôn }
-  RemoveDir(ExpandConstant('{app}'));
+  RemoveDir(ExpandConstant('{app}'));  
+  DelTree(ExpandConstant('{app}'), True, True, True);
 
   MsgBox('MaZult Launcher has been successfully removed.'#13#10#13#10 +
          'Thank you for using it, see you again soon!', mbInformation, MB_OK);
@@ -136,6 +132,5 @@ end;
 
 function NeedRestart(): Boolean;
 begin
-  { Không cho cancel hoặc yêu cầu restart sau khi Yes }
   Result := False;
 end;
