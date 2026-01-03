@@ -152,7 +152,7 @@ class CropBox(QGraphicsRectItem):
     def __init__(self, rect):
         super().__init__(rect)
         self.setFlags(QGraphicsItem.ItemIsMovable | QGraphicsItem.ItemIsSelectable | QGraphicsItem.ItemSendsGeometryChanges)
-        self.setPen(QPen(Qt.green, 2)) # type: ignore
+        self.setPen(QPen(Qt.green, 2))
         self.setBrush(QBrush(QColor(0, 255, 0, 40)))
 
 SETTINGS_FILE = get_appdata_path() / "settings.json"
@@ -353,7 +353,7 @@ class SettingsDialog(QWidget):
 
     def __init__(self, parent=None, tr=None):
         super().__init__(parent)
-        self.tr = tr if tr else load_language() # type: ignore
+        self.tr = tr if tr else load_language()
         
         self.jvm_args_list = load_settings().get("jvm_args", [])
 
@@ -458,7 +458,7 @@ class SettingsDialog(QWidget):
         self.alpha_checkbox.setChecked(current_filters.get("alpha", False))
         self.installed_checkbox.setChecked(current_filters.get("installed", True))
         
-        filter_layout.addWidget(self.release_checkbox) # type: ignore
+        filter_layout.addWidget(self.release_checkbox)
         filter_layout.addWidget(self.snapshot_checkbox)
         filter_layout.addWidget(self.beta_checkbox)
         filter_layout.addWidget(self.alpha_checkbox)
@@ -466,8 +466,6 @@ class SettingsDialog(QWidget):
         filter_groupbox.setLayout(filter_layout)
 
         self.general_pages = QStackedWidget()
-        
-        # Create a single content widget for the scroll area
         content_widget = QWidget()
         content_layout = QVBoxLayout(content_widget)
 
@@ -480,7 +478,6 @@ class SettingsDialog(QWidget):
         )
         self.skip_check_checkbox.setChecked(settings.get("skip_version_check", False))
 
-        # Add all settings groups to the single content layout
         content_layout.addLayout(mc_dir_layout)
         content_layout.addWidget(ram_groupbox)
         content_layout.addWidget(jvm_button)
@@ -489,7 +486,6 @@ class SettingsDialog(QWidget):
         content_layout.addWidget(self.skip_check_checkbox)
         content_layout.addStretch()
 
-        # Setup the scroll area correctly
         general_scroll = QScrollArea()
         general_scroll.setWidgetResizable(True)
         general_scroll.setFrameShape(QFrame.NoFrame) # Remove border
@@ -660,7 +656,6 @@ class SettingsDialog(QWidget):
             java_mode = "custom"
             java_path = self.java_path_input.text().strip()
 
-        # Prevent crash when no language files exist
         if len(self.lang_codes) == 0:
             language = "en_us"
         else:
@@ -686,7 +681,7 @@ class SettingsDialog(QWidget):
         
         if old_settings.get("language") != language:
             QMessageBox.information(self, self.tr.get("language_changed_title", "Language Changed"), self.tr.get("language_changed_message", "Please restart the launcher to apply the new language."))
-            QApplication.instance().quit() # type: ignore
+            QApplication.instance().quit()
 
         main_window = self.window()
         if hasattr(main_window, "dev_console"):
@@ -699,8 +694,8 @@ class SettingsDialog(QWidget):
             main_window.reconnect_rpc()
 
         self.refreshVersions.emit()
-        if hasattr(self.window(), 'go_home'):
-            self.window().go_home() # type: ignore
+        if hasattr(self.window(), 'go_home'): # type: ignore
+            self.window().go_home()
         
     def open_github_link(self):
         webbrowser.open("https://github.com/LunarMoonDLCT/MaZult-Launcher")
@@ -898,9 +893,9 @@ class ModLoaderInstallThread(QThread):
             self.error.emit(str(e))
 
 class ModLoaderDialog(QDialog): # type: ignore
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, tr=None):
         super().__init__(parent)
-        self.tr = parent.tr if hasattr(parent, 'tr') else load_language() # type: ignore
+        self.tr = tr if tr else load_language()
         self.setWindowTitle(self.tr.get("modloader_dialog_title", "Install Mod Loader"))
         self.setMinimumSize(420, 280)
         self.setModal(True)
@@ -920,7 +915,7 @@ class ModLoaderDialog(QDialog): # type: ignore
 
         self.loader_combo = QComboBox()
         self.loader_combo.setToolTip("Select the mod loader you want to install.")
-        self.loader_combo.addItems(["Fabric", "Forge", "NeoForge", "Quilt"]) # These are proper names, no need to translate
+        self.loader_combo.addItems(["Fabric", "Forge", "NeoForge", "Quilt"])
         self.mc_version_label = QLabel(self.tr.get("modloader_mc_version_label", "Minecraft Version:"))
         self.mc_version_combo = QComboBox()
         self.loader_version_label = QLabel(self.tr.get("modloader_loader_version_label", "Loader Version:"))
@@ -940,8 +935,7 @@ class ModLoaderDialog(QDialog): # type: ignore
         self.install_btn.clicked.connect(self.install_loader)
 
         self.cancel_btn = QPushButton("Cancel")
-        self.cancel_btn.clicked.connect(self.on_cancel)
-        self.cancel_btn_ref = self.cancel_btn # Giữ tham chiếu, giờ đã đúng vị trí
+        self.cancel_btn.clicked.connect(self.reject)
 
         button_layout = QHBoxLayout()
         button_layout.addStretch()
@@ -1016,7 +1010,7 @@ class ModLoaderDialog(QDialog): # type: ignore
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
 
-        self.install_thread = ModLoaderInstallThread(loader, mc_ver, loader_ver, mc_dir, tr=self.tr)
+        self.install_thread = ModLoaderInstallThread(loader, mc_ver, loader_ver, mc_dir)
         self.install_thread.status.connect(self.status_label.setText)
         self.install_thread.progress.connect(self.progress_bar.setValue)
         self.install_thread.done.connect(self.on_install_done)
@@ -1069,6 +1063,7 @@ class ModLoaderDialog(QDialog): # type: ignore
                         reverse=True
                     )
                     mc_versions = unique_mc_versions
+
             elif loader == "neoforge":
                 root = ET.fromstring(self.fetched_data[loader])
                 versions_element = root.find("versioning/versions")
@@ -1076,11 +1071,12 @@ class ModLoaderDialog(QDialog): # type: ignore
                     unique_mc_versions = sort_versions_smart([v.text for v in versions_element.findall("version") if v.text])
                     mc_versions = unique_mc_versions
 
+
             if mc_versions:
                 self.mc_version_combo.addItems(mc_versions)
 
         except Exception as e:
-            print(f"Could not parse supported Minecraft versions for {loader.capitalize()}: {e}") # Dev-facing log
+            print(f"Could not parse supported Minecraft versions for {loader.capitalize()}: {e}")
             QMessageBox.warning(self, self.tr.get("error_title", "Error"), self.tr.get("modloader_parse_mc_version_error", "Could not parse supported Minecraft versions for {loader_name}.").format(loader_name=loader.capitalize()))
 
         self.load_loader_versions(initial_load=True)
@@ -1120,13 +1116,9 @@ class ModLoaderDialog(QDialog): # type: ignore
                 )
 
             elif loader == "neoforge":
-                # For NeoForge, the MC version IS the loader version.
-                # We just need to find all versions that start with the selected MC version.
                 root = ET.fromstring(self.fetched_data[loader])
                 all_loader_versions = [v.text for v in root.findall("versioning/versions/version") if v.text and v.text.startswith(mc_ver)]
                 versions = sort_versions_smart(all_loader_versions)
-
-
 
             if not versions:
                 self.loader_version_combo.addItem(self.tr.get("modloader_no_versions_available", "No loader available"))
@@ -1146,9 +1138,9 @@ class ModLoaderDialog(QDialog): # type: ignore
 
 
 class UserManagerDialog(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, tr=None):
         super().__init__(parent)
-        self.tr = parent.tr if hasattr(parent, 'tr') else load_language() # type: ignore
+        self.tr = tr if tr else load_language()
         self.setWindowTitle(self.tr.get("user_manager_title", "Add Users | Manager Users"))
         self.setFixedSize(350, 400)
         self.users = load_users()
@@ -1232,8 +1224,8 @@ class UserManagerDialog(QDialog):
 
 class DevConsole(QWidget):
     append_signal = Signal(str)
-
-    def __init__(self, parent_launcher, styles=""):
+    
+    def __init__(self, parent_launcher, styles="", tr=None):
         super().__init__()
         self.parent_launcher = parent_launcher # type: ignore
         self.tr = parent_launcher.tr if hasattr(parent_launcher, 'tr') else load_language()
@@ -1265,7 +1257,7 @@ class DevConsole(QWidget):
         self.console_output.appendPlainText(text)
     
     def flush(self):
-        pass # Required for stdout redirection
+        pass
         
     def set_kill_button_enabled(self, enabled):
         if self.kill_button and not self.kill_button.parent() is None:
@@ -1277,13 +1269,13 @@ class DevConsole(QWidget):
                 self.parent_launcher.minecraft_thread.killed_by_user = True
                 self.parent_launcher.minecraft_thread.process.kill()
                 self.parent_launcher.minecraft_thread.process.wait()
-                print(self.tr.get("minecraft_process_killed_log", "Minecraft process killed."))
+                print(self.tr.get("minecraft_process_killed_log", "Minecraft process killed.")) # type: ignore
                 self.set_kill_button_enabled(False)
                 if self.parent_launcher.isHidden():
                     self.parent_launcher.show()
                     self.parent_launcher.update_rpc_menu()
             except Exception as e:
-                print(self.tr.get("kill_minecraft_failed_log", "Failed to kill Minecraft process: {e}").format(e=e))
+                print(self.tr.get("kill_minecraft_failed_log", "Failed to kill Minecraft process: {e}").format(e=e)) # type: ignore
 
     def closeEvent(self, event):
         save_settings(dev_console=False)
@@ -1293,7 +1285,7 @@ class DevConsole(QWidget):
 class CrashCheckDialog(QDialog):
     def __init__(self, error_code="UNKNOWN", crash_report_path=None, parent=None, tr=None):
         super().__init__(parent)
-        self.tr = tr if tr else load_language() # type: ignore
+        self.tr = tr if tr else load_language()
         self.setWindowTitle(self.tr.get("crash_detected", "MaZult Crash Check"))
         self.setFixedSize(400, 250)
         self.setStyleSheet("background-color: #202020; color: white;") # type: ignore
@@ -1445,7 +1437,7 @@ class MinecraftThread(QThread):
 
 class MaZultLauncher(QWidget):
     def show_crash_dialog(self, code, path): # type: ignore
-        self.go_home() # Switch to home before showing dialog
+        self.go_home()
         dialog = CrashCheckDialog(code, path, self, self.tr)
         dialog.exec()
 
@@ -1480,7 +1472,7 @@ class MaZultLauncher(QWidget):
     def on_username_changed(self, text):
         placeholder_text = self.tr.get("add_new_user_placeholder", "Add new user...")
         if text == self.tr.get("manage_users", "Manage Users..."):
-            dialog = UserManagerDialog(self) # It will inherit `tr` from `self`
+            dialog = UserManagerDialog(self, tr=self.tr)
             dialog.exec()
             self.update_username_combo()
         elif text and text != placeholder_text:
@@ -1529,8 +1521,7 @@ class MaZultLauncher(QWidget):
         self.lang_code = settings.get("language", "en_us")
         self.tr = load_language(self.lang_code)
 
-
-        self.dev_console = DevConsole(self, styles=self.load_styles())
+        self.dev_console = DevConsole(self, styles=self.load_styles(), tr=self.tr)
         if load_settings().get("dev_console", False):
             self.dev_console.show()
 
@@ -1559,7 +1550,7 @@ class MaZultLauncher(QWidget):
         
         sidebar.addWidget(self.username_combo)
 
-        self.noname = QPushButton(self.tr.get("home_button", "Launcher")) # New button
+        self.noname = QPushButton(self.tr.get("home_button", "Launcher"))
         self.noname.clicked.connect(self.go_home)
         self.noname.setStyleSheet("text-align: left; padding: 10px; background-color: #353535; border: 1px solid #404040;")
         sidebar.addWidget(self.noname)
@@ -1598,7 +1589,7 @@ class MaZultLauncher(QWidget):
         self.page_settings.refreshVersions.connect(self.load_versions)
 
         header_layout = QHBoxLayout()
-        title = QLabel("Minecraft") # This is a brand name, no need to translate
+        title = QLabel("Minecraft")
         title.setFont(QFont("Segoe UI", 24, QFont.Bold))
 
         open_folder_button = QPushButton(self.tr.get("open_folder", "📂"))
@@ -1642,7 +1633,7 @@ class MaZultLauncher(QWidget):
         self.version_combo.currentIndexChanged.connect(self.on_version_changed)
         self.load_versions()
         content_layout.addWidget(version_label)
-        content_layout.addWidget(self.version_combo)
+        content_layout.addWidget(self.version_combo) # type: ignore
 
         self.install_loader_btn = QPushButton(self.tr.get("install_mod_loader_button", "Install Mod Loader"))
         self.install_loader_btn.clicked.connect(self.open_modloader_dialog)
@@ -1687,9 +1678,8 @@ class MaZultLauncher(QWidget):
         self.stacked_widget.setCurrentIndex(1)
 
     def open_modloader_dialog(self):
-        dialog = ModLoaderDialog(self) # It will inherit `tr` from `self`
+        dialog = ModLoaderDialog(self, tr=self.tr)
         if dialog.exec():
-            # Refresh versions if install was successful
             self.load_versions()
 
     def reconnect_rpc(self):
@@ -1728,8 +1718,8 @@ class MaZultLauncher(QWidget):
                 self.rpc.update(
                     details=self.tr.get("rpc_status_menu", "In the menu"),
                     large_image="mzlauncher",
-                    large_text="MaZult Launcher",
-                    small_image="nothing", # This seems like a placeholder name
+                    large_text="MaZult Launcher", # type: ignore
+                    small_image="nothing",
                     small_text="MaZult Launcher",
                     start=int(time.time())
                 )
@@ -1745,7 +1735,7 @@ class MaZultLauncher(QWidget):
                     details=self.tr.get("launching", "Launching..."),
                     large_image="mzlauncher",
                     large_text="MaZult Launcher",
-                    small_image="nothing", # Placeholder
+                    small_image="nothing",
                     small_text="MaZult Launcher",
                     start=int(time.time())
                 )
@@ -1773,7 +1763,7 @@ class MaZultLauncher(QWidget):
     def on_update_clicked(self):
         if self.update_info:
             latest_version, download_url = self.update_info # type: ignore
-            reply = QMessageBox.question(self, self.tr.get("update_available", "Update Available"), # This key exists
+            reply = QMessageBox.question(self, self.tr.get("update_available", "Update Available"),
                                          f"A new version is available: {latest_version}. Do you want to download the update?",
                                          QMessageBox.Yes | QMessageBox.No)
             if reply == QMessageBox.Yes:
@@ -2195,11 +2185,8 @@ class MaZultLauncher(QWidget):
         version_dir = minecraft_directory / "versions" / selected_version_id
         version_json = version_dir / f"{selected_version_id}.json"
 
-        # The soul of the feature is here
         if skip_check and version_dir.exists() and version_json.exists():
             print("[Launch] Skip version verification enabled → launching instantly")
-            # Directly call after_download to bypass the download thread
-            # We need to prepare the options object first
             options = self.prepare_mc_options()
             if options:
                 self._start_minecraft_process(selected_version_id, options, settings)
@@ -2208,7 +2195,6 @@ class MaZultLauncher(QWidget):
                 self.reset_after_cancel()
             return
 
-        # --- Normal download/verification flow ---
         print("[Launch] Normal install / verify flow")
 
         settings = load_settings()
@@ -2279,7 +2265,7 @@ class MaZultLauncher(QWidget):
         self.download_thread.start()
     
     def prepare_mc_options(self):
-        """Helper to gather Minecraft options. Returns options dict or None on error."""
+        
         username = self.username_combo.currentText()
         if not self.users or username == self.tr.get("manage_users", "Manage Users...") or username == self.tr.get("add_new_user_placeholder", "Add new user..."):
             QMessageBox.warning(self, self.tr.get("invalid_user", "Invalid User"), self.tr.get("no_user_selected", "Please add or select a user before playing."))
@@ -2311,7 +2297,7 @@ class MaZultLauncher(QWidget):
         return {"username": username, "uuid": user_uuid, "token": user_token, "jvmArguments": final_jvm_args}
 
     def _start_minecraft_process(self, version_id, options, settings):
-        """The final step: prepares command and launches the Minecraft process."""
+        
         try:
             java_mode = settings.get("java_mode", "default")
             java_path = settings.get("java_path", "")
@@ -2430,7 +2416,7 @@ class Splash(QWidget):
         self.setWindowFlags(
             Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
         )
-        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setAttribute(Qt.WA_TranslucentBackground) # type: ignore
 
         self.progress = 0
         self.use_timer = True # type: ignore
@@ -2445,7 +2431,7 @@ class Splash(QWidget):
         self.title.setFont(QFont("Segoe UI", 20, QFont.Bold))
         self.title.setStyleSheet("color: white;")
         
-        self.subtitle = QLabel() # Text will be set by timer/logic
+        self.subtitle = QLabel()
         self.subtitle.setAlignment(Qt.AlignCenter)
         self.subtitle.setFont(QFont("Segoe UI", 11))
         self.subtitle.setStyleSheet("color:#BBBBBB;")
@@ -2479,7 +2465,6 @@ class Splash(QWidget):
         layout.addWidget(self.bar)
         layout.addStretch()
 
-        # These will be translated in the main logic
         self.steps = [
             (5, "splash_loading_config"),
             (30, "splash_preparing_ui"),
@@ -2490,7 +2475,7 @@ class Splash(QWidget):
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._tick)
-        self.timer.start(25)  # mượt, không quá nhanh
+        self.timer.start(25)
 
     def _tick(self):
         if not self.use_timer:
@@ -2502,7 +2487,7 @@ class Splash(QWidget):
 
             for p, key in self.steps:
                 if self.progress == p:
-                    self.subtitle.setText(self.tr.get(key, "..."))
+                    self.subtitle.setText(self.tr.get(key, "...")) # type: ignore
         else:
             if self.use_timer:
                 self.use_timer = False
@@ -2516,10 +2501,10 @@ class Splash(QWidget):
         p.drawRoundedRect(self.rect(), 22, 22)
 
     def set_translator(self, tr_func):
-        self.tr = tr_func # type: ignore
+        self.tr = tr_func
         self.subtitle.setText(self.tr.get("splash_starting", "Starting..."))
 
-    # ===== DÙNG KHI UPDATE (PROGRESS THẬT) =====
+    
     def set_progress(self, value, text=None):
         self.use_timer = False
         self.progress = max(0, min(100, value))
@@ -2530,7 +2515,7 @@ class Splash(QWidget):
         if self.progress >= 100:
             self.finished.emit()
             
-    # ===== GỌI SAU UPDATE XONG =====
+    
     def resume_timer(self, start_value=0, text=None):
         self.progress = start_value
         self.bar.setValue(self.progress)
@@ -2539,9 +2524,8 @@ class Splash(QWidget):
         self.use_timer = True
 
     def show_error_and_close(self, title, message):
-        """Replaces the splash content with an error message."""
+        
         self.use_timer = False
-        # Clear existing widgets
         while self.main_layout.count():
             item = self.main_layout.takeAt(0)
             widget = item.widget()
@@ -2566,7 +2550,7 @@ def download_update_with_progress(dest_dir, splash):
     print(f"[UPDATER] Download URL: {url}")
     print(f"[UPDATER] Saving to: {zip_path.resolve()}")
 
-    splash.set_progress(1, splash.tr.get("updater_connecting", "Connecting to update server...")) # type: ignore
+    splash.set_progress(1, splash.tr.get("updater_connecting", "Connecting to update server..."))
 
     r = requests.get(url, stream=True, timeout=30)
     r.raise_for_status()
@@ -2585,7 +2569,7 @@ def download_update_with_progress(dest_dir, splash):
                 percent = int(downloaded * 100 / total)
                 splash.set_progress(
                     min(percent, 90),
-                    splash.tr.get("updater_downloading", "Downloading update... {percent}%").format(percent=percent) # type: ignore
+                    splash.tr.get("updater_downloading", "Downloading update... {percent}%").format(percent=percent)
                 )
 
     print(f"[UPDATER] Download completed: {zip_path.resolve()}")
@@ -2621,15 +2605,13 @@ def apply_update(zip_path, splash: Splash):
     base_dir = get_launcher_root()
     temp_dir = base_dir / "temp_update"
 
-    splash.set_progress(92, splash.tr.get("updater_extracting", "Extracting files...")) # type: ignore
+    splash.set_progress(92, splash.tr.get("updater_extracting", "Extracting files..."))
 
     with zipfile.ZipFile(zip_path, "r") as z:
         z.extractall(temp_dir)
 
-    splash.set_progress(94, splash.tr.get("updater_preparing_install", "Preparing to install...")) # type: ignore
-    
-    # On Windows, we assume we are in a temporary directory and will move files.
-    # On other platforms, we might be overwriting in place.
+    splash.set_progress(94, splash.tr.get("updater_preparing_install", "Preparing to install..."))
+
     for item in base_dir.iterdir():
         if item.name in ("bin", "app", "temp_update","unins000.exe", "unins000.dat"):
             continue
@@ -2641,9 +2623,8 @@ def apply_update(zip_path, splash: Splash):
         except Exception as e:
             print(f"[UPDATER] Failed to remove {item}: {e}")
 
-    splash.set_progress(96, splash.tr.get("updater_installing", "Copying new files...")) # type: ignore
+    splash.set_progress(96, splash.tr.get("updater_installing", "Copying new files..."))
 
-    # copy TOÀN BỘ nội dung đã giải nén
     for item in temp_dir.iterdir():
         if item.is_file() and item.name.lower() == "update.zip":
             continue
@@ -2653,7 +2634,7 @@ def apply_update(zip_path, splash: Splash):
         else:
             shutil.copy2(item, dest)
 
-    splash.set_progress(98, splash.tr.get("updater_cleaning", "Cleaning up...")) # type: ignore
+    splash.set_progress(98, splash.tr.get("updater_cleaning", "Cleaning up..."))
 
 def cleanup_update():
     temp_dir = get_launcher_root() / "temp_update"
@@ -2667,7 +2648,7 @@ def get_launcher_root():
     return Path(MAIN_APP_DIR)
 
 def is_admin():
-    """ Checks if the script is running with administrator privileges. """
+    
     try:
         return ctypes.windll.shell32.IsUserAnAdmin()
     except:
@@ -2675,14 +2656,14 @@ def is_admin():
         
 def relaunch_as_admin(extra_args=None):
     if extra_args is None:
-        extra_args = sys.argv[1:] # Relaunch with same arguments
+        extra_args = sys.argv[1:]
 
     params = " ".join(f'"{arg}"' for arg in extra_args)
     exe = sys.executable
 
     ctypes.windll.shell32.ShellExecuteW(
         None,
-        "runas",          # Request UAC elevation
+        "runas",
         exe,
         params,
         None,
@@ -2691,7 +2672,7 @@ def relaunch_as_admin(extra_args=None):
     sys.exit(0)
 
 def get_latest_updater_info():
-    """Fetches the latest updater version and download URL from GitHub."""
+    
     r = requests.get(GITHUB_API_URL, timeout=10)
     r.raise_for_status()
     data = r.json()
@@ -2700,7 +2681,6 @@ def get_latest_updater_info():
     zip_url = None
 
     for asset in data.get("assets", []):
-        # Assuming the asset is a zip file. Adjust if needed.
         if asset.get("name", "").endswith(".zip"):
             zip_url = asset["browser_download_url"]
             break
@@ -2711,10 +2691,7 @@ def get_latest_updater_info():
     return latest_ver, zip_url
 
 class UpdateCheckThread(QThread):
-    """
-    A thread to check for updates without blocking the UI.
-    Emits signals to update the splash screen.
-    """
+    
     update_available = Signal(str, str) # version, url
     up_to_date = Signal()
     error_occurred = Signal(str)
@@ -2747,15 +2724,11 @@ class UpdateCheckThread(QThread):
             self.error_occurred.emit(f"Update check failed: {e}")
 
 def start_update_process(splash: Splash):
-    """
-    Handles the full update download and application process.
-    This function assumes it's running with admin rights if needed.
-    """
+    
     try:
         print("[UPDATER] Permissions OK. Starting update process.")
-        # splash.use_timer = False # set_progress already does this
         splash.bar.setRange(0, 100)
-        splash.set_progress(5, splash.tr.get("updater_starting", "Starting update..."))
+        splash.set_progress(5, splash.tr.get("updater_starting", "Starting update...")) # type: ignore
 
         base_dir = get_launcher_root() # type: ignore
         temp_dir = base_dir / "temp_update"
@@ -2764,9 +2737,7 @@ def start_update_process(splash: Splash):
         apply_update(zip_path, splash)
         cleanup_update()
 
-        splash.set_progress(100, "Update complete. Preparing Launcher")
-        #here cho nó gọi cái timer ở đây r vào launcher
-
+        splash.set_progress(100, splash.tr.get("updater_complete", "Update complete. Preparing Launcher")) # type: ignore
 
     except Exception as e:
         print(f"[UPDATER] Update process failed: {e}")
@@ -2817,10 +2788,8 @@ if __name__ == "__main__":
 
     def get_launcher_root_main():
         if getattr(sys, 'frozen', False):
-            # For frozen exe, e.g., in mzl/bin/launcher.exe, we want mzl/
             return Path(sys.executable).resolve().parent.parent
         else:
-            # For source, e.g., in mzl/Launcher/bin/Launcher.py, we want mzl/
             return Path(__file__).resolve().parent.parent.parent
 
     MAIN_APP_DIR = get_launcher_root_main()
@@ -2830,9 +2799,8 @@ if __name__ == "__main__":
     settings = load_settings()
     tr = load_language(settings.get("language", "en_us"))
     
-    # ===== HÀM START LAUNCHER CHUẨN =====
     splash = Splash()
-    splash.set_translator(tr) # Pass translator to splash
+    splash.set_translator(tr)
 
     appdata_path = get_appdata_path()
     os.makedirs(appdata_path, exist_ok=True)
@@ -2860,7 +2828,6 @@ if __name__ == "__main__":
         if is_windows:
             launcher_name = "MaZult Launcher.exe"
         else:
-            # Assuming it's run with python if not windows and frozen
             launcher_name = "MaZult Launcher.py" 
     
         exe_path = frozen_base_dir / launcher_name
@@ -2875,13 +2842,11 @@ if __name__ == "__main__":
                 else:
                     subprocess.Popen(["python3", str(exe_path), "--Launcher"])
                 sys.exit(0)
-            except Exception as e: # Nếu có lỗi khi chạy, thì tiếp tục chạy như bình thường
+            except Exception as e:
                 print(f"Error when launching launcher, proceeding with current instance: {e}")
         else:
             print("No launcher found, run default app")
     
-    # Logic này giờ sẽ chạy cho cả trường hợp có và không có --Launcher
-    # This logic will now run for both cases: with and without --Launcher
     
     main_window = MaZultLauncher()
     main_window.hide()
@@ -2892,39 +2857,34 @@ if __name__ == "__main__":
             main_window.show()
             main_window.raise_()
             main_window.activateWindow()
-            app.main_window = main_window # Keep reference
+            app.main_window = main_window
 
     splash.finished.connect(open_main_window)
 
     def on_update_available(version, url):
-        # Stop the fake loading timer if an update is found
         splash.use_timer = False
 
         if is_windows and not is_admin():
             print("[UPDATER] Requesting administrator privileges...")
-            splash.set_progress(0, tr.get("updater_waiting_permission", "Please allow administrator permission to update...")) # type: ignore
-            relaunch_as_admin() # Will exit
+            splash.set_progress(0, tr.get("updater_waiting_permission", "Please allow administrator permission to update..."))
+            relaunch_as_admin()
             return
 
-        # If we are here, we have permissions.
         start_update_process(splash)
 
     def on_up_to_date(): # type: ignore
         splash.use_timer = False
-        splash.set_progress(50, tr.get("updater_up_to_date", "Launcher is up to date.")) # type: ignore
-        # After a short delay, resume the fake loading to 100%
-        QTimer.singleShot(1200, lambda: splash.resume_timer(splash.progress, tr.get("splash_preparing_launcher", "Preparing launcher..."))) # type: ignore
+        splash.set_progress(50, tr.get("updater_up_to_date", "Launcher is up to date."))
+        QTimer.singleShot(1200, lambda: splash.resume_timer(splash.progress, tr.get("splash_preparing_launcher", "Preparing launcher...")))
 
     def on_error(message): # type: ignore
         splash.use_timer = False
         splash.set_progress(50, tr.get("updater_failed", "Update check failed."))
-        # After a short delay, start the launcher anyway
         QTimer.singleShot(1500, lambda: splash.resume_timer(splash.progress, tr.get("splash_starting_anyway", "Starting launcher...")))
 
-    # --- Main Logic ---
     splash.show()
     splash.set_progress(0, tr.get("updater_checking", "Checking for updates..."))
-    splash.bar.setRange(0, 0) # Indeterminate progress
+    splash.bar.setRange(0, 0)
 
     update_thread = UpdateCheckThread(launcher_args["updater_ver"])
     update_thread.update_available.connect(on_update_available)
@@ -2932,6 +2892,6 @@ if __name__ == "__main__":
     update_thread.error_occurred.connect(on_error)
     update_thread.start()
 
-    app.update_thread = update_thread # Keep a reference to the thread
+    app.update_thread = update_thread
 
     sys.exit(app.exec())
