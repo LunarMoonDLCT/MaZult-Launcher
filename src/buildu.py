@@ -26,7 +26,7 @@ base = "Win32GUI" if sys.platform == "win32" else None
 
 setup(
     name="MaZult Updater",
-    version="1.07.01.2026",
+    version="1.03.01.2026",
     author="LunarMoonDLCT",
     description="MaZult Launcher",
     options={"build_exe": build_exe_options},
@@ -39,3 +39,4 @@ setup(
         )
     ]
 )
+
