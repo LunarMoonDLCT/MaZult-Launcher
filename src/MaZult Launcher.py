@@ -313,7 +313,7 @@ class UpdaterApp(QWidget):
         self.setFixedSize(360, 200)
         self.setWindowTitle("MaZult Launcher")
         self.setWindowIcon(QIcon("icon.ico"))
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Tool)
+        self.setWindowFlags(Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
 
         self.container = QFrame(self)
