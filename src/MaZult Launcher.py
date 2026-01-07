@@ -31,6 +31,7 @@ def get_launcher_root():
     else:
         return Path(__file__).resolve().parent
 
+UpdaterVer = "1.7.1.2026"
 MAIN_APP_DIR = str(get_launcher_root())
 CURRENT_VERSION_FILE = os.path.join(MAIN_APP_DIR, 'app', 'app.json')
 TEMP_UPDATE_DIR = os.path.join(MAIN_APP_DIR, 'temp_update')
@@ -387,14 +388,14 @@ class UpdaterApp(QWidget):
             if is_windows:
                 launcher_path = os.path.join(MAIN_APP_DIR, 'bin', LAUNCHER_EXE)
                 try:
-                    run_as_original_user([launcher_path, '--Launcher', '--UpdaterVer', '1.3.1.2026'])
+                    run_as_original_user([launcher_path, '--Launcher', '--UpdaterVer', UpdaterVer])
                 except (FileNotFoundError, OSError) as e:
                     self.handle_startup_error("Failed to start the application.")
                     return
 
             else:
                 launcher_path = os.path.join(MAIN_APP_DIR, 'bin', LAUNCHER_PY)
-                command = [sys.executable, launcher_path, '--Launcher']
+                command = [sys.executable, launcher_path, '--Launcher', '--UpdaterVer', UpdaterVer]
                 try:
                     subprocess.Popen(command, start_new_session=True)
                 except (FileNotFoundError, OSError) as e:
