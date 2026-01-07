@@ -2790,7 +2790,7 @@ if __name__ == "__main__":
         if getattr(sys, 'frozen', False):
             return Path(sys.executable).resolve().parent.parent
         else:
-            return Path(__file__).resolve().parent.parent.parent
+            return Path(__file__).resolve().parent.parent
 
     MAIN_APP_DIR = get_launcher_root_main()
 
