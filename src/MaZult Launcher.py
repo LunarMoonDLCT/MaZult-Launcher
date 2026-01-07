@@ -7,7 +7,7 @@ import json
 import subprocess
 import time
 from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout, QProgressBar, QLabel, QMessageBox, QFrame
-from PySide6.QtCore import QThread, Signal, Qt, QTimer
+from PySide6.QtCore import QThread, Signal, Qt
 from PySide6.QtGui import QFont, QIcon
 from pathlib import Path
 if sys.platform.startswith("win"):
@@ -18,7 +18,7 @@ try:
     from importlib.metadata import distributions
 except ImportError:
     distributions = None
-UpdaterVer = "1.7.1.2026"
+
 GITHUB_API_URL = "https://api.github.com/repositories/1044123558/releases/latest"
 
 if getattr(sys, 'frozen', False):
@@ -99,52 +99,6 @@ def run_as_original_user(command_line):
     except Exception as e:
         print(f"Failed to de-elevate privileges: {e}. Running with current rights.")
         return subprocess.Popen(command_line, start_new_session=True)
-
-def check_launcher(process, timeout=20):
-    """
-    Đợi launcher sẵn sàng (có cửa sổ hoặc ít nhất process ổn định)
-    """
-    start = time.time()
-
-
-    # ===== WINDOWS =====
-    if sys.platform.startswith("win"):
-        try:
-            import win32gui
-            import win32process
-
-            def has_window(pid):
-                found = False
-
-                def enum_handler(hwnd, _):
-                    nonlocal found
-                    if not win32gui.IsWindowVisible(hwnd):
-                        return
-                    _, wpid = win32process.GetWindowThreadProcessId(hwnd)
-                    if wpid == pid:
-                        found = True
-
-                win32gui.EnumWindows(enum_handler, None)
-                return found
-
-            while time.time() - start < timeout:
-                if process.poll() is not None:
-                    return True 
-                if has_window(process.pid):
-                    return True
-                time.sleep(0.35)
-
-        except Exception:
-            pass
-
-    while time.time() - start < timeout:
-        if process.poll() is not None:
-            return True
-        time.sleep(0.35)
-
-    return True
-
-
 
 class GitHubAsset:
     def __init__(self, data):
@@ -353,26 +307,13 @@ class UpdateWorker(QThread):
             except OSError as e:
                 pass
 
-class LauncherWaiter(QThread):
-    finished_ok = Signal()
-
-    def __init__(self, process, parent=None):
-        super().__init__(parent)
-        self.process = process
-
-    def run(self):
-        check_launcher(
-            self.process,
-            timeout=20
-        )
-        self.finished_ok.emit()
 class UpdaterApp(QWidget):
     def __init__(self):
         super().__init__()
         self.setFixedSize(360, 200)
         self.setWindowTitle("MaZult Launcher")
         self.setWindowIcon(QIcon("icon.ico"))
-        self.setWindowFlags(Qt.FramelessWindowHint)
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground)
 
         self.container = QFrame(self)
@@ -424,18 +365,6 @@ class UpdaterApp(QWidget):
         self.worker.progress_updated.connect(self.update_progress)
         self.worker.update_success.connect(self.on_update_success)
         self.worker.request_admin_privileges.connect(self.handle_admin_request)
-
-        self.launch_anim = [
-            "Launching",
-            "Launching.",
-            "Launching..",
-            "Launching..."
-        ]
-        self.launch_anim_index = 0
-
-        self.launch_timer = QTimer(self)
-        self.launch_timer.timeout.connect(self.update_launching_text)
-
         self.worker.start()
 
     def update_status(self, message):
@@ -448,59 +377,43 @@ class UpdaterApp(QWidget):
         if total > 0:
             self.status_label.setText(f"Downloading: {current / (1024*1024):.2f} MB / {total / (1024*1024):.2f} MB")
 
-    def update_launching_text(self):
-        self.status_label.setText(self.launch_anim[self.launch_anim_index])
-        self.launch_anim_index = (self.launch_anim_index + 1) % len(self.launch_anim)
-
     def on_update_success(self):
-        self.worker.is_running = False
-        self.worker.quit()
-        self.worker.wait()
-        
-        self.status_label.setText("Launching")
-        self.progress_bar.setRange(0, 0)
-        
+        self.update_status("Update successful. Starting Launcher...")
         try:
             is_windows = sys.platform.startswith("win")
-            process = None
-
+            
+            launcher_path = ""
+            
             if is_windows:
                 launcher_path = os.path.join(MAIN_APP_DIR, 'bin', LAUNCHER_EXE)
-                command = [launcher_path, '--Launcher', '--UpdaterVer', UpdaterVer]
-                if is_admin():
-                    process_info = run_as_original_user(command)
-                    time.sleep(5)
-                    self.on_launcher_ready()
+                try:
+                    run_as_original_user([launcher_path, '--Launcher', '--UpdaterVer', '1.3.1.2026'])
+                except (FileNotFoundError, OSError) as e:
+                    self.handle_startup_error("Failed to start the application.")
                     return
-                else:
-                    process = subprocess.Popen(command, creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
+
             else:
                 launcher_path = os.path.join(MAIN_APP_DIR, 'bin', LAUNCHER_PY)
-                process = subprocess.Popen(
-                    [sys.executable, launcher_path, '--Launcher', '--UpdaterVer', UpdaterVer],
-                    start_new_session=True
-                )
-                QApplication.quit()
-              
+                command = [sys.executable, launcher_path, '--Launcher']
+                try:
+                    subprocess.Popen(command, start_new_session=True)
+                except (FileNotFoundError, OSError) as e:
+                    self.handle_startup_error("Failed to start the application.")
+                    return
             
-            self.launch_anim_index = 0
-            self.launch_timer.start(350)
-
-            self.waiter = LauncherWaiter(process)
-            self.waiter.finished_ok.connect(self.on_launcher_ready)
-            self.waiter.start()
+            if not os.path.exists(launcher_path):
+                raise FileNotFoundError(f"Launcher file not found: {launcher_path}")
             
-        except Exception as e:
-            self.handle_startup_error(str(e))
-    
-    def on_launcher_ready(self):
-        self.launch_timer.stop()
-        self.progress_bar.setRange(0, 100)
-        self.progress_bar.setValue(100)
+        except (FileNotFoundError, OSError) as e:
+            self.handle_startup_error(f"Could not launch the main application: {e}")
+            return
+        
         QApplication.quit()
     
     def handle_startup_error(self, message):
-        QMessageBox.critical(self, "ERROR", f"Could not launch the main application: {message}")
+        self.update_status("An error occurred. Please restart the launcher.")
+        self.worker.update_local_version("0.0.0.0")
+        QMessageBox.critical(self, "ERROR", f"{message} There is something wrong. Please restart the launcher to try again.")
         QApplication.quit()
 
     def handle_admin_request(self):
