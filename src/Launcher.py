@@ -1453,7 +1453,7 @@ class MaZultLauncher(QWidget):
             self.username_combo.model().item(0).setEnabled(False)
             self.username_combo.setStyleSheet("QComboBox { color: #888; } QComboBox QAbstractItemView { color: #E0E0E0; }")
         else:
-            self.username_combo.setStyleSheet("") # Reset stylesheet
+            self.username_combo.setStyleSheet("") 
             self.username_combo.addItems(self.users)
             
             settings = load_settings()
@@ -1461,7 +1461,7 @@ class MaZultLauncher(QWidget):
 
             if saved_username and saved_username in self.users:
                 self.username_combo.setCurrentText(saved_username)
-            elif self.users: # Default to first user if saved one is not found
+            elif self.users: 
                 self.username_combo.setCurrentIndex(0)
                 save_settings(username=self.users[0])
 
@@ -1531,7 +1531,7 @@ class MaZultLauncher(QWidget):
         self.setWindowIcon(QIcon(str(self.icon_path)))
         self.setMinimumSize(900, 520)
         self.setStyleSheet(self.load_styles())
-        self.page_settings = None # Initialize to None
+        self.page_settings = None 
         main_layout = QHBoxLayout(self)
         self.setLayout(main_layout)
         main_layout.setContentsMargins(0, 0, 0, 0)
@@ -1585,7 +1585,7 @@ class MaZultLauncher(QWidget):
         content_layout.setSpacing(20)
         content_layout.setContentsMargins(20, 20, 20, 20)
 
-        self.page_settings = SettingsDialog(self, self.tr) # Re-use SettingsDialog as a widget
+        self.page_settings = SettingsDialog(self, self.tr) 
         self.page_settings.refreshVersions.connect(self.load_versions)
 
         header_layout = QHBoxLayout()
@@ -2139,7 +2139,7 @@ class MaZultLauncher(QWidget):
 
     def on_play_clicked(self):
         print(self.tr.get("debug_thread_created", "[DEBUG] Thread created"))
-        # Nếu thread Minecraft cũ vẫn còn, thì hủy trước khi tạo cái mới
+        
         if self.minecraft_thread and self.minecraft_thread.isRunning():
             try:
                 print(self.tr.get("warn_previous_thread_running", "[WARN] Previous Minecraft thread still running, attempting cleanup..."))
@@ -2191,7 +2191,6 @@ class MaZultLauncher(QWidget):
             if options:
                 self._start_minecraft_process(selected_version_id, options, settings)
             else:
-                # prepare_mc_options will show a message box on error
                 self.reset_after_cancel()
             return
 
@@ -2852,7 +2851,7 @@ if __name__ == "__main__":
     main_window.hide()
 
     def open_main_window():
-        if not main_window.isVisible(): # Prevent multiple calls
+        if not main_window.isVisible(): 
             splash.close()
             main_window.show()
             main_window.raise_()
@@ -2895,3 +2894,4 @@ if __name__ == "__main__":
     app.update_thread = update_thread
 
     sys.exit(app.exec())
+
