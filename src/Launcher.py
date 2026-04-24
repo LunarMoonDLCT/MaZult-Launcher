@@ -9,7 +9,10 @@ import requests
 import tempfile
 import zipfile
 import time
+import http.server
+import socketserver
 import xml.etree.ElementTree as ET
+import threading
 import shlex
 from pathlib import Path
 from PySide6.QtWidgets import (
@@ -33,11 +36,15 @@ import uuid
 from pypresence import Presence
 from pypresence.exceptions import InvalidID, PipeClosed
 from packaging.version import Version, InvalidVersion
+import minecraft_launcher_lib.microsoft_account as msa
 if sys.platform.startswith("win32"):
     import ctypes
 
 GITHUB_API_URL = "https://api.github.com/repos/LunarMoonDLCT/MZassets/releases/latest"
 DISCORD_CLIENT_ID = "1410269369748946986"
+CLIENT_ID = "YOUR_CLIENT_ID_HERE" # Replace with your Azure App Client ID
+REDIRECT_URI = "http://localhost:12782/callback"
+
 
 def parse_launcher_args():
     args = sys.argv[1:]
@@ -155,8 +162,53 @@ class CropBox(QGraphicsRectItem):
         self.setPen(QPen(Qt.green, 2))
         self.setBrush(QBrush(QColor(0, 255, 0, 40)))
 
+ACCOUNTS_FILE = get_appdata_path() / "users.json"
+
+def load_accounts():
+    os.makedirs(get_appdata_path(), exist_ok=True)
+    if ACCOUNTS_FILE.exists():
+        try:
+            with open(ACCOUNTS_FILE, "r", encoding="utf8") as f:
+                data = json.load(f)
+
+            # Kiểm tra phải là list
+            if not isinstance(data, list):
+                raise ValueError("users.json không phải danh sách (list)")
+
+            # Kiểm tra từng phần tử
+            for i, acc in enumerate(data):
+                if not isinstance(acc, dict):
+                    raise ValueError(f"Phần tử tại index {i}")
+
+                if "type" not in acc or "name" not in acc:
+                    raise ValueError(f"Thiếu key 'type' hoặc 'name' tại index {i}")
+
+            return data
+
+        except Exception as e:
+            print(f"[LỖI] users.json bị hỏng: {e}.Đang reset file...")
+
+            try:
+                with open(ACCOUNTS_FILE, "w", encoding="utf8") as f:
+                    json.dump([], f, indent=4)
+                print("[OK] Đã thành công reset users.json về rỗng [EMPTY]")
+            except Exception as write_err:
+                print(f"[FATAL] Không reset được users.json: {write_err}")
+
+            return []
+
+    # Nếu chưa có file
+    with open(ACCOUNTS_FILE, "w", encoding="utf8") as f:
+        json.dump([], f, indent=4)
+    print("[INFO] Tạo mới users.json")
+
+    return []
+
+def save_accounts(accounts):
+    with open(ACCOUNTS_FILE, "w", encoding="utf8") as f:
+        json.dump(accounts, f, indent=4)
+
 SETTINGS_FILE = get_appdata_path() / "settings.json"
-USERS_FILE = get_appdata_path() / "users.json"
 
 def save_settings(username=None, version_id=None, ram_mb=None, mc_dir=None, filters=None, dev_console=None, hide_on_launch=None, jvm_args=None, discord_rpc=None, language=None, java_mode=None, java_path=None, skip_version_check=None):
     data = load_settings()
@@ -215,20 +267,6 @@ def load_settings():
         "java_path": "",
         "skip_version_check": False
     }
-
-def save_users(users):
-    os.makedirs(get_appdata_path(), exist_ok=True)
-    with open(USERS_FILE, "w") as f:
-        json.dump(users, f, indent=4)
-
-def load_users():
-    if os.path.exists(USERS_FILE):
-        try:
-            with open(USERS_FILE, "r") as f:
-                return json.load(f)
-        except Exception:
-            pass
-    return []
 
 def get_minecraft_directory():
     settings = load_settings()
@@ -488,7 +526,7 @@ class SettingsDialog(QWidget):
 
         general_scroll = QScrollArea()
         general_scroll.setWidgetResizable(True)
-        general_scroll.setFrameShape(QFrame.NoFrame) # Remove border
+        general_scroll.setFrameShape(QFrame.NoFrame)
         general_scroll.setWidget(content_widget)
 
         general_layout.addWidget(general_scroll)
@@ -665,6 +703,8 @@ class SettingsDialog(QWidget):
             else:
                 language = self.lang_codes[idx]
 
+        Launcher_profiles_json(mc_dir)
+
         save_settings(
             ram_mb=ram_mb, 
             mc_dir=mc_dir, 
@@ -694,7 +734,7 @@ class SettingsDialog(QWidget):
             main_window.reconnect_rpc()
 
         self.refreshVersions.emit()
-        if hasattr(self.window(), 'go_home'): # type: ignore
+        if hasattr(self.window(), 'go_home'):
             self.window().go_home()
         
     def open_github_link(self):
@@ -717,6 +757,48 @@ class SettingsDialog(QWidget):
         use_default = self.java_default_radio.isChecked()
         self.java_path_input.setEnabled(not use_default)
         self.java_browse_btn.setEnabled(not use_default)
+
+def Launcher_profiles_json(mc_dir):
+    profile_path = os.path.join(mc_dir, "launcher_profiles.json")
+
+    default_data = {
+        "profiles": {
+            "Mazult": {
+                "created": "2020-01-01T00:00:00.000Z",
+                "icon": "Grass",
+                "lastUsed": "2020-01-01T00:00:00.000Z",
+                "lastVersionId": "latest-release",
+                "name": "latest-release",
+                "type": "release"
+            }
+        },
+        "settings": {
+            "crashAssistance": True,
+            "enableAdvanced": False,
+            "enableAnalytics": False,
+            "enableHistorical": False,
+            "enableReleases": True,
+            "enableSnapshots": False,
+            "keepLauncherOpen": False,
+            "profileSorting": "",
+            "showGameLog": False,
+            "showMenu": False,
+            "soundOn": True
+        },
+        "version": 3,
+        "clientToken": str(uuid.uuid4())
+    }
+
+    if os.path.exists(profile_path):
+        try:
+            with open(profile_path, "r", encoding="utf-8") as f:
+                json.load(f)
+            return
+        except Exception:
+            pass
+
+    with open(profile_path, "w", encoding="utf-8") as f:
+        json.dump(default_data, f, indent=4)
 
 def find_minecraft_java_runtime(mc_dir: Path) -> str | None:
     runtime_dir = mc_dir / "runtime"
@@ -800,19 +882,20 @@ class ModLoaderInstallThread(QThread):
     done = Signal(str)
     error = Signal(str)
 
-    def __init__(self, loader, mc_ver, loader_ver, mc_dir, parent=None):
+    def __init__(self, loader, mc_ver, loader_ver, mc_dir, tr=None, parent=None):
         super().__init__(parent)
         self.loader = loader
         self.mc_ver = mc_ver
         self.loader_ver = loader_ver
         self.mc_dir = mc_dir
+        self.lang = tr if tr else {}
 
     def run(self):
         try:
             mc_dir_path = Path(self.mc_dir)
             tmp_dir = get_tmp_dir()
 
-            print("[WARN] Minecraft Java runtime not found. Falling back to 'javaw' in PATH.")
+            print("[WARN] Không tìm thấy java vui lòng cài java")
             java_path = "javaw" if sys.platform.startswith('win32') else "java"
 
             def run_java_installer(jar_path: Path, extra_args=None):
@@ -830,11 +913,11 @@ class ModLoaderInstallThread(QThread):
                 )
 
             if self.loader == "fabric":
-                self.status.emit(self.tr.get("installing_fabric", "Installing Fabric..."))
+                self.status.emit(self.lang.get("installing_fabric", "Installing Fabric..."))
                 self.progress.emit(50)
                 minecraft_launcher_lib.fabric.install_fabric(self.mc_ver, self.mc_dir, self.loader_ver)
             elif self.loader == "quilt":
-                self.status.emit(self.tr.get("installing_quilt", "Installing Quilt..."))
+                self.status.emit(self.lang.get("installing_quilt", "Installing Quilt..."))
                 self.progress.emit(10)
                 
                 new_repo_url = f"https://repo.maven.apache.org/maven2/org/quiltmc/quilt-installer/{self.loader_ver}/quilt-installer-{self.loader_ver}.jar"
@@ -846,7 +929,7 @@ class ModLoaderInstallThread(QThread):
                 downloaded = False
                 for url in installer_urls:
                     try:
-                        self.status.emit(self.tr.get("quilt_downloading_from", "Trying to download from {server}...").format(server=url.split('/')[2]))
+                        self.status.emit(self.lang.get("quilt_downloading_from", "Trying to download from {server}...").format(server=url.split('/')[2]))
                         r = requests.get(url, stream=True, timeout=15)
                         if r.status_code == 200:
                             with open(installer_path, "wb") as f: shutil.copyfileobj(r.raw, f)
@@ -860,7 +943,7 @@ class ModLoaderInstallThread(QThread):
                 self.progress.emit(70)
                 run_java_installer(installer_path)
             elif self.loader == "forge":
-                self.status.emit(self.tr.get("installing_forge", "Installing Forge..."))
+                self.status.emit(self.lang.get("installing_forge", "Installing Forge..."))
                 self.progress.emit(30)
                 installer_url = (
                     "https://maven.minecraftforge.net/net/minecraftforge/forge/"
@@ -873,7 +956,7 @@ class ModLoaderInstallThread(QThread):
                 run_java_installer(installer_path)
                 installer_path.unlink(missing_ok=True)
             elif self.loader == "neoforge":
-                self.status.emit(self.tr.get("installing_neoforge_download", "Downloading NeoForge installer..."))
+                self.status.emit(self.lang.get("installing_neoforge_download", "Downloading NeoForge installer..."))
                 self.progress.emit(30)
                 installer_url = f"https://maven.neoforged.net/releases/net/neoforged/neoforge/{self.loader_ver}/neoforge-{self.loader_ver}-installer.jar"
                 installer_path = tmp_dir / f"neoforge-{self.loader_ver}-installer.jar"
@@ -881,18 +964,18 @@ class ModLoaderInstallThread(QThread):
                 r = requests.get(installer_url, stream=True); r.raise_for_status()
                 with open(installer_path, "wb") as f: shutil.copyfileobj(r.raw, f)
 
-                self.status.emit(self.tr.get("installing_neoforge_install", "Installing NeoForge..."))
+                self.status.emit(self.lang.get("installing_neoforge_install", "Installing NeoForge..."))
                 self.progress.emit(70)
-                run_java_installer(installer_path, [""])
+                run_java_installer(installer_path)
                 installer_path.unlink(missing_ok=True)
 
             self.progress.emit(100)
-            self.done.emit(self.tr.get("modloader_install_success", "{loader_name} {loader_ver} installed successfully!").format(loader_name=self.loader.capitalize(), loader_ver=self.loader_ver))
+            self.done.emit(self.lang.get("modloader_install_success", "{loader_name} {loader_ver} installed successfully!").format(loader_name=self.loader.capitalize(), loader_ver=self.loader_ver))
 
         except Exception as e:
             self.error.emit(str(e))
 
-class ModLoaderDialog(QDialog): # type: ignore
+class ModLoaderDialog(QDialog):
     def __init__(self, parent=None, tr=None):
         super().__init__(parent)
         self.tr = tr if tr else load_language()
@@ -1010,7 +1093,7 @@ class ModLoaderDialog(QDialog): # type: ignore
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
 
-        self.install_thread = ModLoaderInstallThread(loader, mc_ver, loader_ver, mc_dir)
+        self.install_thread = ModLoaderInstallThread(loader, mc_ver, loader_ver, mc_dir, self.tr)
         self.install_thread.status.connect(self.status_label.setText)
         self.install_thread.progress.connect(self.progress_bar.setValue)
         self.install_thread.done.connect(self.on_install_done)
@@ -1142,8 +1225,8 @@ class UserManagerDialog(QDialog):
         super().__init__(parent)
         self.tr = tr if tr else load_language()
         self.setWindowTitle(self.tr.get("user_manager_title", "Add Users | Manager Users"))
-        self.setFixedSize(350, 400)
-        self.users = load_users()
+        self.setMinimumSize(350, 400)
+        self.users = load_accounts()
         self.parent_window = parent
 
         layout = QVBoxLayout(self)
@@ -1172,15 +1255,118 @@ class UserManagerDialog(QDialog):
 
     def update_list(self):
         self.user_list.clear()
-        for user in self.users:
-            self.user_list.addItem(user)
+        accounts = load_accounts()
+        for acc in accounts:
+            if acc.get("type") == "microsoft":
+                display_name = f"(microsoft) {acc.get('name', 'Unknown')}"
+            else:
+                display_name = f"(offline) {acc.get('name', 'Unknown')}"
+            self.user_list.addItem(display_name)
     
     def add_user(self):
-        text, ok = QInputDialog.getText(self, self.tr.get("add_user_title", "Add User"), self.tr.get("add_user_prompt", "Enter new username:"))
-        if ok and text and text not in self.users:
-            self.users.append(text)
-            save_users(self.users)
-            self.update_list()
+        dialog = QDialog(self)
+        dialog.setWindowTitle(self.tr.get("add_account_title", "Add Account"))
+        layout = QVBoxLayout(dialog)
+
+        label = QLabel(self.tr.get("choose_account_type", "Choose account type:"))
+        layout.addWidget(label)
+
+        btn_offline = QPushButton(self.tr.get("offline_account", "Offline"))
+        btn_offline.setMinimumHeight(35)
+        layout.addWidget(btn_offline)
+
+        btn_microsoft = QPushButton(self.tr.get("microsoft_account", "Microsoft"))
+        btn_microsoft.setMinimumHeight(35)
+        btn_microsoft.setVisible(False)
+        layout.addWidget(btn_microsoft)
+
+        btn_cancel = QPushButton(self.tr.get("cancel", "Cancel"))
+        btn_cancel.setMinimumHeight(35)
+        layout.addWidget(btn_cancel)
+
+        result = None
+        def set_result(res):
+            nonlocal result
+            result = res
+            dialog.accept()
+
+        btn_offline.clicked.connect(lambda: set_result("offline"))
+        btn_microsoft.clicked.connect(lambda: set_result("microsoft"))
+        btn_cancel.clicked.connect(dialog.reject)
+
+        if dialog.exec() == QDialog.Accepted and result == "offline":
+            accounts = load_accounts()
+            name, ok = QInputDialog.getText(self, self.tr.get("offline_login_title", "Offline Login"), self.tr.get("username_prompt", "Username:"))
+            if ok and name:
+                accounts.append({"type": "offline", "name": name})
+                save_accounts(accounts)
+                self.update_list()
+        elif result == "microsoft":
+            self.start_microsoft_login()
+
+    def start_microsoft_login(self):
+        try:
+            auth_code = None
+            server_started = threading.Event()
+            
+            class OAuthHandler(http.server.SimpleHTTPRequestHandler):
+                def do_GET(self):
+                    nonlocal auth_code
+                    if "code=" in self.path:
+                        auth_code = msa.get_auth_code_from_url(self.path)
+                        self.send_response(200)
+                        self.send_header("Content-type", "text/html")
+                        self.end_headers()
+                        self.wfile.write(b"<html><h2>Login successful! You can close this window now.</h2></html>")
+                    else:
+                        self.send_response(404)
+                        self.end_headers()
+
+            def start_auth_server():
+                try:
+                    server = socketserver.TCPServer(("localhost", 12782), OAuthHandler)
+                    server_started.set()
+                    server.handle_request()
+                    return server
+                except Exception as e:
+                    print(f"Server error: {e}")
+                    server_started.set()
+                    return None
+
+            server_thread = threading.Thread(target=start_auth_server)
+            server_thread.daemon = True
+            server_thread.start()
+
+            server_started.wait(timeout=5)
+
+            login_url = msa.get_login_url(CLIENT_ID, REDIRECT_URI)
+            webbrowser.open(login_url)
+
+            while auth_code is None and server_thread.is_alive():
+                QApplication.processEvents()
+                time.sleep(0.1)
+
+            if auth_code:
+                try:
+                    account = msa.complete_login(CLIENT_ID, None, REDIRECT_URI, auth_code)
+                    self.on_login_success(account)
+                except Exception as e:
+                    self.on_login_failed(f"Failed to complete login: {e}")
+        except Exception as e:
+            self.on_login_failed(f"An unexpected error occurred: {e}")
+
+    def on_login_success(self, account):
+        accounts = load_accounts()
+        new_account = {
+            "type": "microsoft", "name": account["name"], "uuid": account["id"],
+            "token": account["access_token"], "refresh_token": account.get("refresh_token")
+        }
+        accounts.append(new_account)
+        save_accounts(accounts)
+        self.update_list()
+
+    def on_login_failed(self, error_message):
+        QMessageBox.critical(self, "Login Failed", f"Microsoft login failed:\n{error_message}")
             
     def edit_user(self):
         selected = self.user_list.currentItem()
@@ -1189,12 +1375,17 @@ class UserManagerDialog(QDialog):
             return
         
         old_username = selected.text()
-        text, ok = QInputDialog.getText(self, self.tr.get("edit_user_title", "Edit User"), self.tr.get("edit_user_prompt", "Edit username:"), QLineEdit.Normal, old_username)
-        if ok and text and text != old_username and text not in self.users:
-            index = self.users.index(old_username)
-            self.users[index] = text
-            save_users(self.users)
-            self.update_list()
+        if old_username.startswith("(offline)"):
+            current_name = old_username.replace("(offline) ", "")
+            text, ok = QInputDialog.getText(self, self.tr.get("edit_user_title", "Edit User"), self.tr.get("edit_user_prompt", "Edit username:"), QLineEdit.Normal, current_name)
+            if ok and text and text != current_name:
+                index = self.user_list.currentRow()
+                accounts = load_accounts()
+                accounts[index]["name"] = text
+                save_accounts(accounts)
+                self.update_list()
+        else:
+            QMessageBox.information(self, self.tr.get("edit_user_title", "Edit User"), self.tr.get("cannot_edit_ms_account", "Microsoft account names cannot be edited here."))
 
     def delete_user(self):
         selected = self.user_list.currentItem()
@@ -1202,22 +1393,23 @@ class UserManagerDialog(QDialog):
             QMessageBox.warning(self, self.tr.get("no_selection_title", "No Selection"), self.tr.get("select_user_to_delete_prompt", "Please select a user to delete."))
             return
 
-        username = selected.text()
-        if len(self.users) <= 1:
-            QMessageBox.warning(self, self.tr.get("cannot_delete_user_title", "Cannot Delete"), self.tr.get("at_least_one_user_error", "You must have at least one user."))
-            return
-
-        reply = QMessageBox.question(self, self.tr.get("delete_user_title", "Delete User"), self.tr.get("delete_user_confirm", "Are you sure you want to delete '{username}'?").format(username=username),
+        display_name = selected.text()
+        reply = QMessageBox.question(self, self.tr.get("delete_user_title", "Delete User"), self.tr.get("delete_user_confirm", "Are you sure you want to delete '{username}'?").format(username=display_name),
                                      QMessageBox.Yes | QMessageBox.No)
         if reply == QMessageBox.Yes:
-            self.users.remove(username)
-            save_users(self.users)
+            index = self.user_list.currentRow()
+            accounts = load_accounts()
+            if 0 <= index < len(accounts):
+                accounts.pop(index)
+                save_accounts(accounts)
+
             self.update_list()
 
     def select_user(self):
         selected = self.user_list.currentItem()
         if selected:
-            self.parent_window.username_combo.setCurrentText(selected.text())
+            display_text = selected.text()
+            self.parent_window.username_combo.setCurrentText(display_text)
             self.accept()
         else:
             QMessageBox.warning(self, self.tr.get("no_selection_title", "No Selection"), self.tr.get("select_user_prompt", "Please select a user."))
@@ -1227,7 +1419,7 @@ class DevConsole(QWidget):
     
     def __init__(self, parent_launcher, styles="", tr=None):
         super().__init__()
-        self.parent_launcher = parent_launcher # type: ignore
+        self.parent_launcher = parent_launcher
         self.tr = parent_launcher.tr if hasattr(parent_launcher, 'tr') else load_language()
         self.setWindowTitle(self.tr.get("dev_console_title", "Developer Console"))
         self.setMinimumSize(700, 400)
@@ -1288,7 +1480,7 @@ class CrashCheckDialog(QDialog):
         self.tr = tr if tr else load_language()
         self.setWindowTitle(self.tr.get("crash_detected", "MaZult Crash Check"))
         self.setFixedSize(400, 250)
-        self.setStyleSheet("background-color: #202020; color: white;") # type: ignore
+        self.setStyleSheet("background-color: #202020; color: white;") 
 
         self.layout = QVBoxLayout()
         self.label = QLabel(self.tr.get("crash_info", "Uh oh, something went wrong."))
@@ -1436,7 +1628,7 @@ class MinecraftThread(QThread):
         event.accept()
 
 class MaZultLauncher(QWidget):
-    def show_crash_dialog(self, code, path): # type: ignore
+    def show_crash_dialog(self, code, path):
         self.go_home()
         dialog = CrashCheckDialog(code, path, self, self.tr)
         dialog.exec()
@@ -1445,23 +1637,29 @@ class MaZultLauncher(QWidget):
         placeholder_text = self.tr.get("add_new_user_placeholder", "Add new user...")
         self.username_combo.blockSignals(True)
         self.username_combo.clear()
-
-        self.users = load_users()
         
-        if not self.users:
+        accounts = load_accounts()
+        self.users = [] 
+
+        if not accounts:
             self.username_combo.addItem(placeholder_text)
             self.username_combo.model().item(0).setEnabled(False)
             self.username_combo.setStyleSheet("QComboBox { color: #888; } QComboBox QAbstractItemView { color: #E0E0E0; }")
         else:
-            self.username_combo.setStyleSheet("") 
-            self.username_combo.addItems(self.users)
+            self.username_combo.setStyleSheet("")
+            for acc in accounts:
+                if acc.get("type") == "microsoft":
+                    name = f"(microsoft) {acc.get('name', 'Unknown')}"
+                else:
+                    name = f"(offline) {acc.get('name', 'Unknown')}"
+                self.username_combo.addItem(name)
+                self.users.append(name) 
             
             settings = load_settings()
             saved_username = settings.get("username")
-
-            if saved_username and saved_username in self.users:
+            if saved_username and self.username_combo.findText(saved_username) != -1:
                 self.username_combo.setCurrentText(saved_username)
-            elif self.users: 
+            elif self.users:
                 self.username_combo.setCurrentIndex(0)
                 save_settings(username=self.users[0])
 
@@ -1531,7 +1729,7 @@ class MaZultLauncher(QWidget):
         self.setWindowIcon(QIcon(str(self.icon_path)))
         self.setMinimumSize(900, 520)
         self.setStyleSheet(self.load_styles())
-        self.page_settings = None 
+        self.page_settings = None
         main_layout = QHBoxLayout(self)
         self.setLayout(main_layout)
         main_layout.setContentsMargins(0, 0, 0, 0)
@@ -1585,7 +1783,7 @@ class MaZultLauncher(QWidget):
         content_layout.setSpacing(20)
         content_layout.setContentsMargins(20, 20, 20, 20)
 
-        self.page_settings = SettingsDialog(self, self.tr) 
+        self.page_settings = SettingsDialog(self, self.tr)
         self.page_settings.refreshVersions.connect(self.load_versions)
 
         header_layout = QHBoxLayout()
@@ -1718,7 +1916,7 @@ class MaZultLauncher(QWidget):
                 self.rpc.update(
                     details=self.tr.get("rpc_status_menu", "In the menu"),
                     large_image="mzlauncher",
-                    large_text="MaZult Launcher", # type: ignore
+                    large_text="MaZult Launcher", 
                     small_image="nothing",
                     small_text="MaZult Launcher",
                     start=int(time.time())
@@ -2119,13 +2317,12 @@ class MaZultLauncher(QWidget):
         if self.download_thread:
             self.download_thread = None
 
-        # Proceed to launch
         self._start_minecraft_process(selected_version_id, options, settings)
 
 
     def reset_after_cancel(self):
         self.is_downloading = False
-        self.progress_label.hide() # type: ignore
+        self.progress_label.hide() 
         self.progress_bar.hide()
         self.play_button.setText(self.tr.get("play", "Play"))
         self.play_button.setEnabled(True)
@@ -2139,7 +2336,6 @@ class MaZultLauncher(QWidget):
 
     def on_play_clicked(self):
         print(self.tr.get("debug_thread_created", "[DEBUG] Thread created"))
-        
         if self.minecraft_thread and self.minecraft_thread.isRunning():
             try:
                 print(self.tr.get("warn_previous_thread_running", "[WARN] Previous Minecraft thread still running, attempting cleanup..."))
@@ -2264,36 +2460,55 @@ class MaZultLauncher(QWidget):
         self.download_thread.start()
     
     def prepare_mc_options(self):
-        
+        accounts = load_accounts()
         username = self.username_combo.currentText()
-        if not self.users or username == self.tr.get("manage_users", "Manage Users...") or username == self.tr.get("add_new_user_placeholder", "Add new user..."):
-            QMessageBox.warning(self, self.tr.get("invalid_user", "Invalid User"), self.tr.get("no_user_selected", "Please add or select a user before playing."))
+
+        target_account = None
+        for acc in accounts:
+            if acc.get("type") == "microsoft":
+                display = f"(microsoft) {acc.get('name')}"
+            else:
+                display = f"(offline) {acc.get('name')}"
+            
+            if display == username:
+                target_account = acc
+                break
+
+        if not target_account:
             return None
 
-        settings = load_settings()
-        allocated_ram_mb = settings.get("ram_mb", 2048)
+        if target_account.get("type") == "microsoft":
+            refresh_token = target_account.get("refresh_token")
+            if refresh_token:
+                try:
+                    print("[Auth] Refreshing Microsoft token...")
+                    new_account_info = msa.complete_refresh(CLIENT_ID, None, REDIRECT_URI, refresh_token)
+                    
+                    # Update account in list
+                    target_account["name"] = new_account_info["name"]
+                    target_account["uuid"] = new_account_info["id"]
+                    target_account["token"] = new_account_info["access_token"]
+                    target_account["refresh_token"] = new_account_info["refresh_token"]
+                    save_accounts(accounts)
+                    print("[Auth] Token refreshed and saved successfully.")
 
-        user_uuid = get_mojang_uuid(username)
-        if user_uuid is None:
-            print(self.tr.get("mojang_uuid_offline_fallback", "Cannot get Mojang UUID for {username}. Using offline UUID.").format(username=username))
-            user_uuid = str(uuid.uuid3(uuid.NAMESPACE_URL, "OfflinePlayer:" + username))
-        user_token = user_uuid
-
-        jvm_args = settings.get("jvm_args", [])
-        default_jvm_args = [f"-Xmx{allocated_ram_mb}M", "-Xms512M"]
-        final_jvm_args = []
-        overridden_args = set()
-
-        for arg in jvm_args:
-            if arg.startswith("-Xmx"): print(self.tr.get("ignoring_xmx_arg", "Ignoring user-provided -Xmx argument."))
-            elif arg.startswith("-Xms"): final_jvm_args.append(arg); overridden_args.add("Xms")
-            else: final_jvm_args.append(arg)
-
-        for arg in default_jvm_args:
-            if arg.startswith("-Xms") and "Xms" in overridden_args: continue
-            final_jvm_args.append(arg)
-
-        return {"username": username, "uuid": user_uuid, "token": user_token, "jvmArguments": final_jvm_args}
+                except Exception as e:
+                    print(f"[Auth] Failed to refresh token: {e}")
+                    QMessageBox.warning(self, self.tr.get("login_expired_title", "Login Expired"), self.tr.get("login_expired_message", "Your Microsoft login has expired. Please log in again."))
+                    accounts.remove(target_account)
+                    save_accounts(accounts)
+                    self.update_username_combo()
+                    return None
+            
+            return {
+                "username": target_account["name"],
+                "uuid": target_account["uuid"],
+                "token": target_account["token"],
+                "user_type": "msa"
+            }
+        else: # offline
+            user_uuid = str(uuid.uuid3(uuid.NAMESPACE_URL, "OfflinePlayer:" + target_account.get("name")))
+            return { "username": target_account.get("name"), "uuid": user_uuid, "token": user_uuid }
 
     def _start_minecraft_process(self, version_id, options, settings):
         
@@ -2415,13 +2630,13 @@ class Splash(QWidget):
         self.setWindowFlags(
             Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
         )
-        self.setAttribute(Qt.WA_TranslucentBackground) # type: ignore
+        self.setAttribute(Qt.WA_TranslucentBackground) 
 
         self.progress = 0
-        self.use_timer = True # type: ignore
+        self.use_timer = True 
 
         layout = QVBoxLayout(self)
-        self.main_layout = layout # Store layout reference
+        self.main_layout = layout 
         layout.setContentsMargins(28, 26, 28, 26)
         layout.setSpacing(14)
 
@@ -2486,7 +2701,7 @@ class Splash(QWidget):
 
             for p, key in self.steps:
                 if self.progress == p:
-                    self.subtitle.setText(self.tr.get(key, "...")) # type: ignore
+                    self.subtitle.setText(self.tr.get(key, "..."))
         else:
             if self.use_timer:
                 self.use_timer = False
@@ -2666,7 +2881,7 @@ def relaunch_as_admin(extra_args=None):
         exe,
         params,
         None,
-        1                 # SW_SHOWNORMAL
+        1                 
     )
     sys.exit(0)
 
@@ -2691,7 +2906,7 @@ def get_latest_updater_info():
 
 class UpdateCheckThread(QThread):
     
-    update_available = Signal(str, str) # version, url
+    update_available = Signal(str, str) 
     up_to_date = Signal()
     error_occurred = Signal(str)
 
@@ -2729,7 +2944,7 @@ def start_update_process(splash: Splash):
         splash.bar.setRange(0, 100)
         splash.set_progress(5, splash.tr.get("updater_starting", "Starting update...")) # type: ignore
 
-        base_dir = get_launcher_root() # type: ignore
+        base_dir = get_launcher_root() 
         temp_dir = base_dir / "temp_update"
         
         zip_path = download_update_with_progress(temp_dir, splash)
@@ -2851,7 +3066,7 @@ if __name__ == "__main__":
     main_window.hide()
 
     def open_main_window():
-        if not main_window.isVisible(): 
+        if not main_window.isVisible():
             splash.close()
             main_window.show()
             main_window.raise_()
@@ -2871,12 +3086,12 @@ if __name__ == "__main__":
 
         start_update_process(splash)
 
-    def on_up_to_date(): # type: ignore
+    def on_up_to_date(): 
         splash.use_timer = False
         splash.set_progress(50, tr.get("updater_up_to_date", "Launcher is up to date."))
         QTimer.singleShot(1200, lambda: splash.resume_timer(splash.progress, tr.get("splash_preparing_launcher", "Preparing launcher...")))
 
-    def on_error(message): # type: ignore
+    def on_error(message): 
         splash.use_timer = False
         splash.set_progress(50, tr.get("updater_failed", "Update check failed."))
         QTimer.singleShot(1500, lambda: splash.resume_timer(splash.progress, tr.get("splash_starting_anyway", "Starting launcher...")))
@@ -2894,4 +3109,3 @@ if __name__ == "__main__":
     app.update_thread = update_thread
 
     sys.exit(app.exec())
-
