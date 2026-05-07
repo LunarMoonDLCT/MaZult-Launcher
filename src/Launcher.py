@@ -171,11 +171,9 @@ def load_accounts():
             with open(ACCOUNTS_FILE, "r", encoding="utf8") as f:
                 data = json.load(f)
 
-            # Kiểm tra phải là list
             if not isinstance(data, list):
                 raise ValueError("users.json không phải danh sách (list)")
 
-            # Kiểm tra từng phần tử
             for i, acc in enumerate(data):
                 if not isinstance(acc, dict):
                     raise ValueError(f"Phần tử tại index {i}")
@@ -186,7 +184,7 @@ def load_accounts():
             return data
 
         except Exception as e:
-            print(f"[LỖI] users.json bị hỏng: {e}.Đang reset file...")
+            print(f"[ERR] users.json is broken: {e}.reseting file...")
 
             try:
                 with open(ACCOUNTS_FILE, "w", encoding="utf8") as f:
@@ -197,7 +195,6 @@ def load_accounts():
 
             return []
 
-    # Nếu chưa có file
     with open(ACCOUNTS_FILE, "w", encoding="utf8") as f:
         json.dump([], f, indent=4)
     print("[INFO] Tạo mới users.json")
@@ -1138,7 +1135,7 @@ class ModLoaderDialog(QDialog):
             elif loader == "forge":
                 root = ET.fromstring(self.fetched_data[loader])
                 versions_element = root.find("versioning/versions")
-                if versions_element is not None: # type: ignore
+                if versions_element is not None:
                     all_versions = [v.text for v in versions_element.findall("version") if v.text]
                     unique_mc_versions = sorted(
                         list(set(v.split("-", 1)[0] for v in all_versions)),
@@ -1461,13 +1458,13 @@ class DevConsole(QWidget):
                 self.parent_launcher.minecraft_thread.killed_by_user = True
                 self.parent_launcher.minecraft_thread.process.kill()
                 self.parent_launcher.minecraft_thread.process.wait()
-                print(self.tr.get("minecraft_process_killed_log", "Minecraft process killed.")) # type: ignore
+                print(self.tr.get("minecraft_process_killed_log", "Minecraft process killed.")) 
                 self.set_kill_button_enabled(False)
                 if self.parent_launcher.isHidden():
                     self.parent_launcher.show()
                     self.parent_launcher.update_rpc_menu()
             except Exception as e:
-                print(self.tr.get("kill_minecraft_failed_log", "Failed to kill Minecraft process: {e}").format(e=e)) # type: ignore
+                print(self.tr.get("kill_minecraft_failed_log", "Failed to kill Minecraft process: {e}").format(e=e)) 
 
     def closeEvent(self, event):
         save_settings(dev_console=False)
@@ -1830,13 +1827,32 @@ class MaZultLauncher(QWidget):
         self.version_combo = QComboBox()
         self.version_combo.currentIndexChanged.connect(self.on_version_changed)
         self.load_versions()
-        content_layout.addWidget(version_label)
-        content_layout.addWidget(self.version_combo) # type: ignore
 
-        self.install_loader_btn = QPushButton(self.tr.get("install_mod_loader_button", "Install Mod Loader"))
-        self.install_loader_btn.clicked.connect(self.open_modloader_dialog)
-        content_layout.addWidget(self.install_loader_btn)
-        
+        version_row = QHBoxLayout()
+        version_row.addWidget(self.version_combo)
+        version_row.setSpacing(10)
+        self.version_combo.setMinimumHeight(30)
+
+        self.instant_launch_checkbox = QCheckBox(self.tr.get("instant_launch_main_menu", "Instant Launch"))
+        self.instant_launch_checkbox.setChecked(settings.get("skip_version_check", False))
+        self.instant_launch_checkbox.setToolTip(
+            self.tr.get("skip_version_check_tooltip", "Launch instantly without checking files. May crash if broken.")
+        )
+        self.instant_launch_checkbox.setStyleSheet("""
+            QCheckBox { spacing: 6px; font-size: 12px; color: #ccc; }
+            QCheckBox::indicator { width: 14px; height: 14px; }
+        """)
+        self.instant_launch_checkbox.setCursor(Qt.PointingHandCursor)
+        self.instant_launch_checkbox.stateChanged.connect(
+            lambda state: self.on_instant_launch_changed(bool(state))
+        )
+
+        version_row.addWidget(self.instant_launch_checkbox)
+        version_row.addStretch()
+
+        content_layout.addWidget(version_label)
+        content_layout.addLayout(version_row)
+
         content_layout.addStretch()
 
         self.progress_label = QLabel()
@@ -1847,6 +1863,10 @@ class MaZultLauncher(QWidget):
         self.progress_bar.hide()
         content_layout.addWidget(self.progress_label)
         content_layout.addWidget(self.progress_bar)
+
+        self.install_loader_btn = QPushButton(self.tr.get("install_mod_loader_button", "Install Mod Loader"))
+        self.install_loader_btn.clicked.connect(self.open_modloader_dialog)
+        content_layout.addWidget(self.install_loader_btn)
         
         self.play_button = QPushButton(self.tr.get("play", "Play"))
         self.play_button.setObjectName("playButton")
@@ -1863,6 +1883,11 @@ class MaZultLauncher(QWidget):
         main_layout.addWidget(self.stacked_widget)
 
         self.connect_rpc()
+
+    def on_instant_launch_changed(self, state, sync_settings_dialog=True):
+        save_settings(skip_version_check=bool(state))
+        if sync_settings_dialog and self.page_settings:
+            self.page_settings.skip_check_checkbox.setChecked(bool(state))
 
     def go_home(self):
         self.stacked_widget.setCurrentIndex(0)
@@ -1960,7 +1985,7 @@ class MaZultLauncher(QWidget):
 
     def on_update_clicked(self):
         if self.update_info:
-            latest_version, download_url = self.update_info # type: ignore
+            latest_version, download_url = self.update_info 
             reply = QMessageBox.question(self, self.tr.get("update_available", "Update Available"),
                                          f"A new version is available: {latest_version}. Do you want to download the update?",
                                          QMessageBox.Yes | QMessageBox.No)
@@ -2340,7 +2365,7 @@ class MaZultLauncher(QWidget):
             try:
                 print(self.tr.get("warn_previous_thread_running", "[WARN] Previous Minecraft thread still running, attempting cleanup..."))
                 self.minecraft_thread.terminate()
-                self.minecraft_thread.wait(2000) # type: ignore
+                self.minecraft_thread.wait(2000) 
                 self.minecraft_thread = None
             except Exception as e:
                 print(f"{self.tr.get('error_cleanup_old_thread', '[ERROR] Failed to cleanup old thread:')} {e}")
@@ -2382,58 +2407,19 @@ class MaZultLauncher(QWidget):
         version_json = version_dir / f"{selected_version_id}.json"
 
         if skip_check and version_dir.exists() and version_json.exists():
-            print("[Launch] Skip version verification enabled → launching instantly")
-            options = self.prepare_mc_options()
+            print("[Launch] Skip version verification enabled, preparing to launch instantly...")
+            options = self.prepare_mc_options(True)
             if options:
-                self._start_minecraft_process(selected_version_id, options, settings)
+                self._start_minecraft_process(selected_version_id, options, load_settings())
             else:
                 self.reset_after_cancel()
             return
 
-        print("[Launch] Normal install / verify flow")
+        print("[Launch] Debug launch game. Checking game assets.")
 
         settings = load_settings()
-        allocated_ram_mb = settings.get("ram_mb", 2048)
-        
-        user_uuid = get_mojang_uuid(username)
-        if user_uuid is None:
-            print(self.tr.get("mojang_uuid_offline_fallback", "Cannot get Mojang UUID for {username}. Using offline UUID.").format(username=username))
-            user_uuid = str(uuid.uuid3(uuid.NAMESPACE_URL, "OfflinePlayer:" + username))
-        user_token = user_uuid
-
-        jvm_args = settings.get("jvm_args", [])
-        
-        default_jvm_args = [f"-Xmx{allocated_ram_mb}M", "-Xms512M"]
-        final_jvm_args = []
-        overridden_args = set()
-
-        for arg in jvm_args:
-            if arg.startswith("-Xmx"):
-                print(self.tr.get("ignoring_xmx_arg", "Ignoring user-provided -Xmx argument."))
-            elif arg.startswith("-Xms"):
-                final_jvm_args.append(arg)
-                overridden_args.add("Xms")
-            elif arg.startswith((
-                "-Dlog4j2.formatMsgNoLookups", "-Dos.name", "-Dos.version",
-                "-Djava.library.path", "-Dminecraft.launcher.brand",
-                "-Dminecraft.launcher.version", "-cp",
-                "-Djava.net.preferIPv4Stack=true"
-            )):
-                final_jvm_args.append(arg)
-            else:
-                final_jvm_args.append(arg)
-
-        for arg in default_jvm_args:
-            if arg.startswith("-Xms") and "Xms" in overridden_args:
-                continue
-            final_jvm_args.append(arg)
-
-        options = {
-            "username": username,
-            "uuid": user_uuid,
-            "token": user_token,
-            "jvmArguments": final_jvm_args
-        }
+        options = self.prepare_mc_options(False)
+        if not options: return
 
         self.progress_label.show()
         self.progress_bar.show()
@@ -2458,8 +2444,8 @@ class MaZultLauncher(QWidget):
         self.download_thread.finished.connect(self.download_thread.deleteLater)
         self.download_thread.finished_signal.connect(lambda success: self.after_download(selected_version_id, options, settings, success))
         self.download_thread.start()
-    
-    def prepare_mc_options(self):
+
+    def prepare_mc_options(self, is_instant_launch=False):
         accounts = load_accounts()
         username = self.username_combo.currentText()
 
@@ -2477,6 +2463,33 @@ class MaZultLauncher(QWidget):
         if not target_account:
             return None
 
+        clean_username = target_account.get("name")
+
+        settings = load_settings()
+        allocated_ram_mb = settings.get("ram_mb", 2048)
+        user_jvm_args = settings.get("jvm_args", [])
+        
+        final_jvm_args = []
+        has_xmx = False
+        has_xms = False
+
+        for arg in user_jvm_args:
+            if arg.startswith("-Xmx"):
+                has_xmx = True
+            if arg.startswith("-Xms"):
+                has_xms = True
+            final_jvm_args.append(arg)
+
+        if not has_xmx:
+            final_jvm_args.insert(0, f"-Xmx{allocated_ram_mb}M")
+        if not has_xms:
+            final_jvm_args.insert(1, f"-Xms{allocated_ram_mb // 4}M") # Allocate 1/4 of max as min
+
+        options = {
+            "jvmArguments": final_jvm_args
+        }
+        print(f"[DEBUG] JVM Args: {final_jvm_args}")
+
         if target_account.get("type") == "microsoft":
             refresh_token = target_account.get("refresh_token")
             if refresh_token:
@@ -2484,7 +2497,6 @@ class MaZultLauncher(QWidget):
                     print("[Auth] Refreshing Microsoft token...")
                     new_account_info = msa.complete_refresh(CLIENT_ID, None, REDIRECT_URI, refresh_token)
                     
-                    # Update account in list
                     target_account["name"] = new_account_info["name"]
                     target_account["uuid"] = new_account_info["id"]
                     target_account["token"] = new_account_info["access_token"]
@@ -2500,15 +2512,17 @@ class MaZultLauncher(QWidget):
                     self.update_username_combo()
                     return None
             
-            return {
-                "username": target_account["name"],
+            options.update({
+                "username": clean_username,
                 "uuid": target_account["uuid"],
                 "token": target_account["token"],
-                "user_type": "msa"
-            }
-        else: # offline
-            user_uuid = str(uuid.uuid3(uuid.NAMESPACE_URL, "OfflinePlayer:" + target_account.get("name")))
-            return { "username": target_account.get("name"), "uuid": user_uuid, "token": user_uuid }
+                "user_type": "msa",
+            })
+            return options
+        else: 
+            user_uuid = str(uuid.uuid3(uuid.NAMESPACE_URL, "OfflinePlayer:" + clean_username))
+            options.update({ "username": clean_username, "uuid": user_uuid, "token": user_uuid })
+            return options
 
     def _start_minecraft_process(self, version_id, options, settings):
         
@@ -2942,7 +2956,7 @@ def start_update_process(splash: Splash):
     try:
         print("[UPDATER] Permissions OK. Starting update process.")
         splash.bar.setRange(0, 100)
-        splash.set_progress(5, splash.tr.get("updater_starting", "Starting update...")) # type: ignore
+        splash.set_progress(5, splash.tr.get("updater_starting", "Starting update...")) 
 
         base_dir = get_launcher_root() 
         temp_dir = base_dir / "temp_update"
@@ -2951,11 +2965,11 @@ def start_update_process(splash: Splash):
         apply_update(zip_path, splash)
         cleanup_update()
 
-        splash.set_progress(100, splash.tr.get("updater_complete", "Update complete. Preparing Launcher")) # type: ignore
+        splash.set_progress(100, splash.tr.get("updater_complete", "Update complete. Preparing Launcher")) 
 
     except Exception as e:
         print(f"[UPDATER] Update process failed: {e}")
-        splash.show_error_and_close(splash.tr.get("updater_failed_title", "Update Failed"), splash.tr.get("updater_apply_failed", "Could not apply update.\n{e}").format(e=e)) # type: ignore
+        splash.show_error_and_close(splash.tr.get("updater_failed_title", "Update Failed"), splash.tr.get("updater_apply_failed", "Could not apply update.\n{e}").format(e=e)) 
 
 
 if __name__ == "__main__":

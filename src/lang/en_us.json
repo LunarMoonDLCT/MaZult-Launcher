@@ -143,5 +143,6 @@
   "updater_failed_title": "Update Failed",
   "updater_apply_failed": "Could not apply update.\n{e}",
   "splash_preparing_launcher": "Preparing launcher...",
-  "splash_starting_anyway": "Starting launcher..."
+  "splash_starting_anyway": "Starting launcher...",
+  "instant_launch_main_menu": "Instant Launch"
 }

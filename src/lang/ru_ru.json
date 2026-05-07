@@ -143,5 +143,6 @@
   "updater_failed_title": "Ошибка обновления",
   "updater_apply_failed": "Не удалось применить обновление.\n{e}",
   "splash_preparing_launcher": "Подготовка лаунчера...",
-  "splash_starting_anyway": "Запуск лаунчера..."
+  "splash_starting_anyway": "Запуск лаунчера...",
+  "instant_launch_main_menu": "Мгновенный запуск"
 }
