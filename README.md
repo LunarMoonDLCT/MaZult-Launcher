@@ -50,7 +50,7 @@ This version requires **Python 3** to be installed on your system.
     ```bash
     cd <your_extracted_folder_path>
     ```
-    *(Replace `<your_extracted_folder_path>` with the folder name, e.g., `cd MaZult-Launcher-cross`)*
+    *(Replace `<your_extracted_folder_path>` with the folder name, e.g., `cd MaZult-Launcher`)*
 
 2.  Install all necessary Python libraries using the `requirements.txt` file:
     ```bash
