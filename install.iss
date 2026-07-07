@@ -34,7 +34,7 @@ Name: "launchafterinstall"; Description: "Launch MaZult Launcher after installat
 
 [Files]
 
-Source: "app\*"; DestDir: "{app}"; Flags: ignoreversion
+Source: "dist/updater_app_debug/*"; DestDir: "{app}"; Flags: ignoreversion
 Source: "app\lib\*"; DestDir: "{app}\lib"; Flags: recursesubdirs createallsubdirs
 
 [Icons]
