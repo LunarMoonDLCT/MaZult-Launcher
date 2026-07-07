@@ -3,6 +3,7 @@ import os
 from cx_Freeze import setup, Executable
 
 build_exe_options = {
+    "build_exe": "dist/app_debug",
 
     "packages": [
         "os", "sys", "json", "shutil", "zipfile",
