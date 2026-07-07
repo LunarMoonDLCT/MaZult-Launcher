@@ -53,18 +53,3 @@ jobs:
           name: updater_app_debug
           path: dist/updater_app_debug/**
           
-      - name: List files(Debug build)
-        shell: pwsh
-        run: |
-          Get-Location
-          Get-ChildItem -Force
-          Get-ChildItem -Recurse -Filter *.iss
-          
-      - uses: Minionguyjpro/Inno-Setup-Action@v1.2.5
-        with:
-          path: install.iss
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: MaZultLauncher_Setup
-          path: Output/MaZultLauncher_Setup.exe
