@@ -3,6 +3,7 @@ import os
 from cx_Freeze import setup, Executable
 
 build_exe_options = {
+    "build_exe": "dist/app_debug"
     "packages": [
         "os", "sys", "json", "uuid", "requests",
         "PySide6.QtCore", "PySide6.QtGui", "PySide6.QtWidgets",
