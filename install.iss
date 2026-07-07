@@ -10,7 +10,7 @@ OutputBaseFilename=MaZultLauncher_Setup
 Compression=lzma
 SolidCompression=yes
 
-SetupIconFile=app\icon.ico
+SetupIconFile=icon.ico
 
 DisableWelcomePage=no
 
