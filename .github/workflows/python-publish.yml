@@ -25,10 +25,10 @@ jobs:
 
       - name: Build EXE for windows
         run: |
-          python build.py
+          python build.py build
 
       - name: Upload EXE artifact
         uses: actions/upload-artifact@v4
         with:
           name: debug-exe
-          path: src/dist/MZLauncher_.exe
+          path: src/dist/app_debug
