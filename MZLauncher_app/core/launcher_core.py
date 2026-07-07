@@ -40,6 +40,10 @@ import minecraft_launcher_lib.microsoft_account as msa
 if sys.platform.startswith("win32"):
     import ctypes
 
+from MZLauncher_app.core.bootstrap import preload_modules
+
+preload_modules()
+
 GITHUB_API_URL = "https://api.github.com/repos/LunarMoonDLCT/MZassets/releases/latest"
 DISCORD_CLIENT_ID = "1410269369748946986"
 CLIENT_ID = "YOUR_CLIENT_ID_HERE" # Replace with your Azure App Client ID
@@ -2972,7 +2976,7 @@ def start_update_process(splash: Splash):
         splash.show_error_and_close(splash.tr.get("updater_failed_title", "Update Failed"), splash.tr.get("updater_apply_failed", "Could not apply update.\n{e}").format(e=e)) 
 
 
-if __name__ == "__main__":
+def main():
     def global_exception_hook(exctype, value, tb):
         settings = load_settings()
         tr = load_language(settings.get("language", "en_us"))
@@ -3123,3 +3127,7 @@ if __name__ == "__main__":
     app.update_thread = update_thread
 
     sys.exit(app.exec())
+
+
+if __name__ == "__main__":
+    main()
