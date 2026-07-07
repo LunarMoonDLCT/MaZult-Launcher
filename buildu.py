@@ -33,7 +33,7 @@ setup(
     options={"build_exe": build_exe_options},
     executables=[
         Executable(
-            "MaZult Launcher.py", 
+            "MZUpdate_app/MaZult Launcher.py", 
             base=base,
             icon="icon.ico",
             copyright="© 2026 LunarMoonDLCT"
