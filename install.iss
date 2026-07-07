@@ -1,7 +1,7 @@
 ; --- MaZult Launcher Inno Setup Script (64-bit only) ---
 [Setup]
 AppName=MaZult Launcher
-AppVersion=1.3.1.2026
+AppVersion=1.7.1.2026
 AppPublisher=LunarMoonDLCT
 AppCopyright=© 2026 LunarMoonDLCT
 DefaultDirName={pf}\MaZult Launcher
