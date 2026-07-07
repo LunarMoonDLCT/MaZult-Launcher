@@ -40,10 +40,6 @@ import minecraft_launcher_lib.microsoft_account as msa
 if sys.platform.startswith("win32"):
     import ctypes
 
-from MZLauncher_app.core.bootstrap import preload_modules
-
-preload_modules()
-
 GITHUB_API_URL = "https://api.github.com/repos/LunarMoonDLCT/MZassets/releases/latest"
 DISCORD_CLIENT_ID = "1410269369748946986"
 CLIENT_ID = "YOUR_CLIENT_ID_HERE" # Replace with your Azure App Client ID
@@ -3115,6 +3111,21 @@ def main():
         QTimer.singleShot(1500, lambda: splash.resume_timer(splash.progress, tr.get("splash_starting_anyway", "Starting launcher...")))
 
     splash.show()
+    splash.set_progress(10, tr.get("splash_loading_config", "Loading configuration..."))
+    QApplication.processEvents()
+
+    try:
+        from MZLauncher_app.core.bootstrap import preload_modules
+        splash.set_progress(35, tr.get("splash_init_modules", "Initializing modules..."))
+        QApplication.processEvents()
+        preload_modules()
+        splash.set_progress(60, tr.get("splash_preparing_launcher", "Preparing launcher..."))
+        QApplication.processEvents()
+    except Exception as e:
+        print(f"[BOOTSTRAP] Failed to preload modules: {e}")
+        splash.set_progress(60, tr.get("splash_starting_anyway", "Starting launcher..."))
+        QApplication.processEvents()
+
     splash.set_progress(0, tr.get("updater_checking", "Checking for updates..."))
     splash.bar.setRange(0, 0)
 
