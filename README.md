@@ -10,6 +10,12 @@
 
 ## Navigation
 - [Getting MaZultLauncher](#getting-mazultLauncher)
+- [License](#license)
+- [Contributing](#contributing) 
 
 ## Getting-MaZultLauncher
 - You can get the prebuilt app from the [releases](http://github.com/LunarMoonDLCT/MaZult-Launcher/releases).
+
+## Contributing
+Contributions are welcome!
+
