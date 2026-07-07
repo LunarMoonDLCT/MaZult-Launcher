@@ -24,16 +24,15 @@ jobs:
 
       - run: |
           python build.py build
-          
+
       - uses: actions/upload-artifact@v4
         with:
           name: app_debug
           path: dist/app_debug/**
 
-
   updater:
-    runs-on: Windows-latest
-    
+    runs-on: windows-latest
+
     steps:
       - uses: actions/checkout@v4
 
@@ -48,10 +47,17 @@ jobs:
 
       - run: |
           python buildu.py build
-          
+
       - uses: actions/upload-artifact@v4
         with:
           name: updater_app_debug
           path: dist/updater_app_debug/**
 
+      - uses: Minionguyjpro/Inno-Setup-Action@v1.2.5
+        with:
+          path: install.iss
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MaZultLauncher_Setup
+          path: Output/MaZultLauncher_Setup.exe
