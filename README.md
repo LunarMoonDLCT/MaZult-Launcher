@@ -9,7 +9,7 @@
 * MaZult Launcher is a custom Minecraft Launcher
 
 ## Navigation
-- [Getting MaZultLauncher](#Getting-MaZultLauncher)
+- [Getting MaZultLauncher](#getting-mazultLauncher)
 
 ## Getting-MaZultLauncher
 - You can get the prebuilt app from the [releases](http://github.com/LunarMoonDLCT/MaZult-Launcher/releases).
