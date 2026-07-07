@@ -4,9 +4,7 @@
 
 [![GitHub commit activity](https://img.shields.io/github/commit-activity/m/LunarMoonDLCT/MaZult-Launcher)](https://github.com/LunarMoonDLCT/MaZult-Launcher/actions)
 
-
-[Download (Latest Release)](https://github.com/LunarMoonDLCT/MaZult-Launcher/releases/latest)
-* MaZult Launcher is a custom Minecraft Launcher
+* MaZult Launcher is
 
 ## Navigation
 - [Getting MaZultLauncher](#getting-mazultLauncher)
@@ -19,6 +17,9 @@
 
 ## Contributing
 Contributions are welcome!
+
+## License
+
 
 ## Third party libnaries, licenses and sources
 Special thanks to:
