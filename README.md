@@ -7,6 +7,7 @@
 * MaZult Launcher is a open-source minecraft launcher.
 
 
+
 ## Navigation
 - [Getting MaZultLauncher](#getting-mazultLauncher)
 - [License](#license)
