@@ -13,7 +13,7 @@
 - [Third party libnaries](#third-party-libnaries-licenses-and-sources)
 
 ## Getting-MaZultLauncher
-- You can get the prebuilt app from the [releases](http://github.com/LunarMoonDLCT/MaZult-Launcher/releases).
+- You can get setup file in the [releases](http://github.com/LunarMoonDLCT/MaZult-Launcher/releases).
 
 ## Contributing
 Contributions are welcome!
