@@ -52,8 +52,14 @@ def get_latest_updater_info():
     latest_ver = data["tag_name"].lstrip("v")
     zip_url = None
 
+    # Determine the correct suffix based on the operating system
+    if sys.platform.startswith("win32"):
+        os_specific_suffix = "-Win.zip"
+    else:
+        os_specific_suffix = "-Other-OS.zip"
+
     for asset in data.get("assets", []):
-        if asset.get("name", "").endswith(".zip"):
+        if asset.get("name", "").endswith(os_specific_suffix):
             zip_url = asset["browser_download_url"]
             break
 
