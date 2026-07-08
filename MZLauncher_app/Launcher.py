@@ -11,5 +11,5 @@ if __name__ == '__main__':
         if candidate not in sys.path:
             sys.path.insert(0, candidate)
 
-    from MZLauncher_app.core.launcher_core import main
+    from MZLauncher_app.core.splash import main
     main()
