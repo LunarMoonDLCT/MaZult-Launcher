@@ -25,8 +25,8 @@ build_exe_options = {
     "include_msvcr": True,
 }
 
-# base = "Win32GUI" if sys.platform == "win32" else None
-base = None
+base = "Win32GUI" if sys.platform == "win32" else None
+# base = None # this for developer :)
 setup(
     name="MaZult Launcher",
     version="1.8.5.2026",
