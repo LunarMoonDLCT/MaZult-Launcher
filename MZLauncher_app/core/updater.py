@@ -95,7 +95,7 @@ class UpdateCheckThread(QThread):
             self.error_occurred.emit(f"Update check failed: {e}")
 
 def download_update_with_progress(dest_dir, splash):
-    url, _ = get_latest_updater_info()
+    _, url = get_latest_updater_info()
 
     base_dir = get_launcher_root()
     temp_dir = base_dir / "temp_update"
