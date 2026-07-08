@@ -21,7 +21,7 @@
 Contributions are welcome!
 
 ## License
-MaZult Launcher is licensed [MIT License](https://github.com/LunarMoonDLCT/MaZult-Launcher/blob/main/LICENSE)
+MaZult Launcher is licensed under the [MIT License](https://github.com/LunarMoonDLCT/MaZult-Launcher/blob/main/LICENSE)
 
 ## Third party libnaries, licenses and sources
 Special thanks to:
