@@ -144,6 +144,5 @@
   "updater_apply_failed": "Không thể áp dụng bản cập nhật.\n{e}",
   "splash_preparing_launcher": "Đang chuẩn bị launcher...",
   "splash_starting_anyway": "Đang khởi động launcher...",
-  "instant_launch_main_menu": "Vào game nhanh",
-  "dev_mode_button": "Chế độ nhà phát triển"
+  "instant_launch_main_menu": "Vào game nhanh"
 }

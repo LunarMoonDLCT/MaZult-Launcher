@@ -71,9 +71,12 @@ def parse_launcher_args():
 
 def resource_path(relative_path):
     if getattr(sys, 'frozen', False):
+        # Khi đã build, file thực thi nằm trong thư mục build/bin/
         base_path = os.path.dirname(sys.executable)
     else:
-        base_path = os.path.dirname(os.path.abspath(__file__))
+        # Khi chạy từ source, __file__ là .../MZLauncher_app/core/launcher_core.py
+        # Cần đi lên 1 cấp để ra thư mục MZLauncher_app
+        base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(base_path, relative_path)
 
 
