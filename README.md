@@ -4,6 +4,7 @@
 
 [![GitHub commit activity](https://img.shields.io/github/commit-activity/m/LunarMoonDLCT/MaZult-Launcher)](https://github.com/LunarMoonDLCT/MaZult-Launcher/actions)
 
+
 * MaZult Launcher is a open-source minecraft launcher.
 
 
