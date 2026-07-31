@@ -17,7 +17,7 @@ build_exe_options = {
     ],
 
     "include_files": [
-        "icon.ico", "MZLauncher_app/lang", 
+        "icon.ico", "MZLauncher_app/lang", "MZLauncher_app/assets", 
     ],
 
     "optimize": 2,
@@ -25,8 +25,8 @@ build_exe_options = {
     "include_msvcr": True,
 }
 
-base = "Win32GUI" if sys.platform == "win32" else None
-# base = None # this for developer :)
+# base = "Win32GUI" if sys.platform == "win32" else None
+base = None # this for developer :)
 setup(
     name="MaZult Launcher",
     version="1.8.5.2026",
