@@ -12,7 +12,8 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QFont, QPainter, QColor
 from PySide6.QtCore import Qt, QTimer, Signal
 
-from MZLauncher_app.core.launcher_core import MaZultLauncher, load_language, get_appdata_path, get_tmp_dir, parse_launcher_args
+from MZLauncher_app.core.launcher_core import MaZultLauncher, parse_launcher_args
+from MZLauncher_app.core.utils import load_language, get_appdata_path, get_tmp_dir
 from MZLauncher_app.core.updater import (
     UpdateCheckThread, is_admin, relaunch_as_admin, download_update_with_progress,
     apply_update, cleanup_update, get_launcher_root
@@ -117,7 +118,6 @@ class Splash(QWidget):
 
 def start_update_process(splash: Splash):
     try:
-        print("[UPDATER] Permissions OK. Starting update process.")
         splash.set_progress(5, splash.tr.get("updater_starting", "Starting update..."), indeterminate=False)
 
         base_dir = get_launcher_root()
@@ -125,7 +125,6 @@ def start_update_process(splash: Splash):
 
         zip_path = download_update_with_progress(temp_dir, splash)
         apply_update(zip_path, splash)
-        # Cleanup is now handled by the updater itself
         cleanup_update()
 
         splash.set_progress(100, splash.tr.get("updater_complete", "Update complete. Preparing Launcher"))
@@ -179,7 +178,6 @@ def main():
     shutil.rmtree(get_tmp_dir(), ignore_errors=True)
 
     launcher_args = parse_launcher_args()
-    print("[Args]", launcher_args)
 
     is_windows = sys.platform.startswith("win32")
     is_launcher_arg = launcher_args["has_launcher"]
@@ -208,6 +206,8 @@ def main():
             main_window.show()
             main_window.raise_()
             main_window.activateWindow()
+            main_window.main_window.start_entrance_animation()
+            main_window.home_page.start_entrance_animation()
             app.main_window = main_window
 
     splash.finished.connect(open_main_window)
@@ -221,10 +221,8 @@ def main():
         start_update_process(splash)
 
     def on_up_to_date():
-        # Keep it indeterminate to maintain the "loading" feel
         splash.set_progress(0, tr.get("updater_up_to_date", "Launcher is up to date."), indeterminate=True)
         
-        # After a short delay, show "Preparing" and then finish
         def finish_loading():
             splash.set_progress(0, tr.get("splash_preparing_launcher", "Preparing launcher..."), indeterminate=True)
             QTimer.singleShot(800, lambda: splash.set_progress(100, tr.get("splash_preparing_launcher", "Preparing launcher..."), indeterminate=False))
@@ -232,7 +230,6 @@ def main():
         QTimer.singleShot(1200, finish_loading)
 
     def on_error(message):
-        # Keep it indeterminate even on error
         splash.set_progress(0, tr.get("updater_failed", "Update check failed."), indeterminate=True)
         QTimer.singleShot(1500, lambda: splash.set_progress(100, tr.get("splash_starting_anyway", "Starting launcher..."), indeterminate=False))
 

@@ -52,7 +52,6 @@ def get_latest_updater_info():
     latest_ver = data["tag_name"].lstrip("v")
     zip_url = None
 
-    # Determine the correct suffix based on the operating system
     if sys.platform.startswith("win32"):
         os_specific_suffix = "-Win.zip"
     else:
@@ -109,9 +108,6 @@ def download_update_with_progress(dest_dir, splash):
 
     zip_path = temp_dir / "update.zip"
 
-    print(f"[UPDATER] Download URL: {url}")
-    print(f"[UPDATER] Saving to: {zip_path.resolve()}")
-
     splash.set_progress(1, splash.tr.get("updater_connecting", "Connecting to update server..."))
 
     r = requests.get(url, stream=True, timeout=30)
@@ -134,7 +130,6 @@ def download_update_with_progress(dest_dir, splash):
                     splash.tr.get("updater_downloading", "Downloading update... {percent}%").format(percent=percent)
                 )
 
-    print(f"[UPDATER] Download completed: {zip_path.resolve()}")
     return zip_path
 
 def apply_update(zip_path, splash: 'Splash'):
@@ -176,6 +171,5 @@ def cleanup_update():
     temp_dir = get_launcher_root() / "temp_update"
     try:
         shutil.rmtree(temp_dir)
-        print("[UPDATER] temp_update cleaned")
     except Exception as e:
         print(f"[UPDATER] Cleanup failed: {e}")

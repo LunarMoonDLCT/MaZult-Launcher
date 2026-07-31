@@ -54,8 +54,29 @@ def save_accounts(accounts):
 
 def save_settings(username=None, version_id=None, ram_mb=None, mc_dir=None, filters=None, dev_console=None,
                   hide_on_launch=None, jvm_args=None, discord_rpc=None, language=None, java_mode=None,
-                  java_path=None, skip_version_check=None):
-    data = load_settings()
+                  java_path=None, skip_version_check=None, instant_launch=None, instances=None, _reset_to_default=False):
+    if _reset_to_default:
+        data = {
+            'filters': {
+                'release': True,
+                'snapshot': False,
+                'beta': False,
+                'alpha': False,
+                'installed': True,
+            },
+            'dev_console': False,
+            'hide_on_launch': True,
+            'jvm_args': [],
+            'discord_rpc': True,
+            'language': 'en_us',
+            'java_mode': 'default',
+            'java_path': '',
+            'skip_version_check': False,
+            'ram_mb': 2048,
+            'instant_launch': False
+        }
+    else:
+        data = load_settings()
     if username is not None:
         data['username'] = username
     if version_id is not None:
@@ -82,6 +103,10 @@ def save_settings(username=None, version_id=None, ram_mb=None, mc_dir=None, filt
         data['java_path'] = java_path
     if skip_version_check is not None:
         data['skip_version_check'] = skip_version_check
+    if instant_launch is not None:
+        data['instant_launch'] = instant_launch
+    if instances is not None:
+        data['instances'] = instances
 
     os.makedirs(get_appdata_path(), exist_ok=True)
     with open(SETTINGS_FILE, 'w', encoding='utf8') as f:
@@ -111,6 +136,7 @@ def load_settings():
         'java_mode': 'default',
         'java_path': '',
         'skip_version_check': False,
+        'instant_launch': False
     }
 
 

@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import (
     QPixmap, QIcon, QStandardItemModel, QStandardItem, QFont, QPainter, QColor, QImage,
     QPen, QMouseEvent, QBrush
-)
+) 
 from PySide6.QtCore import (
     Qt, QTimer, QSize, Signal, QThread, QObject, QUrl, QRect, QRectF, QPointF
 )
@@ -33,14 +33,20 @@ from pypresence import Presence
 from pypresence.exceptions import InvalidID, PipeClosed
 from packaging.version import Version, InvalidVersion
 import minecraft_launcher_lib.microsoft_account as msa
-import uuid
+import uuid 
 
-from MZLauncher_app.settings.settings import get_appdata_path, get_minecraft_directory, load_settings, save_settings, load_accounts, save_accounts
+from MZLauncher_app.settings.settings import get_minecraft_directory, load_settings, save_settings, load_accounts, save_accounts
 from MZLauncher_app.download.download import DownloadThread
-from MZLauncher_app.modloader.modloader import ModLoaderDialog
 from MZLauncher_app.minecraft_account.account import UserManagerDialog
+from MZLauncher_app.gui.main_window import MainWindow
+from MZLauncher_app.gui.pages.home_page import HomePage
+from MZLauncher_app.gui.pages.setting_page import SettingsPage
+from MZLauncher_app.gui.pages.instance_page import InstancePage, load_instances
+from MZLauncher_app.gui.pages.modloader_page import ModLoaderPage
 
 DISCORD_CLIENT_ID = "1410269369748946986"
+from MZLauncher_app.core.utils import (list_available_languages, load_language, resource_path, get_appdata_path, get_tmp_dir,
+                                       get_installed_versions, get_available_versions, minecraft_version_key)
 CLIENT_ID = "YOUR_CLIENT_ID_HERE"  # Replace with your Azure App Client ID
 REDIRECT_URI = "http://localhost:12782/callback"
 
@@ -69,58 +75,6 @@ def parse_launcher_args():
 
     return {"has_launcher": has_launcher, "updater_ver": updater_ver}
 
-def resource_path(relative_path):
-    if getattr(sys, 'frozen', False):
-        # Khi đã build, file thực thi nằm trong thư mục build/bin/
-        base_path = os.path.dirname(sys.executable)
-    else:
-        # Khi chạy từ source, __file__ là .../MZLauncher_app/core/launcher_core.py
-        # Cần đi lên 1 cấp để ra thư mục MZLauncher_app
-        base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    return os.path.join(base_path, relative_path)
-
-
-def list_available_languages():
-    lang_dir = resource_path("lang")
-    langs = {}
-    if not os.path.exists(lang_dir):
-        print("[Lang] No lang directory found.")
-        return langs
-
-    for file in os.listdir(lang_dir):
-        if file.endswith(".json"):
-            lang_code = file.replace(".json", "")
-            try:
-                with open(os.path.join(lang_dir, file), "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    lang_name = data.get("langinfo", lang_code)
-                    langs[lang_code] = lang_name
-            except Exception as e:
-                print(f"[Lang] Failed to read {file}: {e}")
-    return langs
-
-def load_language(lang_code="en_us"):
-    lang_path = os.path.join(resource_path("lang"), f"{lang_code}.json")
-    if os.path.exists(lang_path):
-        try:
-            with open(lang_path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception as e:
-            print(f"[Lang] Error loading {lang_code}: {e}")
-    print(f"[Lang] Missing language file: {lang_code}, fallback to English.")
-    if lang_code != "en_us":
-        return load_language("en_us")
-    return {}
-
-VERSION_FILE = get_appdata_path() / "versions.json"
-VERSION_API = "https://launchermeta.mojang.com/mc/game/version_manifest.json"
-
-def minecraft_version_key(version_string: str):
-    try:
-        return Version(version_string)
-    except InvalidVersion:
-        return Version("0.0.0-alpha")
-
 def sort_versions_smart(versions: list[str], reverse=True) -> list[str]:
     def key(v):
         try:
@@ -145,85 +99,6 @@ def format_jvm_args(args: list[str]) -> str:
         else:
             result.append(arg)
     return " ".join(result)
-class CropBox(QGraphicsRectItem):
-    def __init__(self, rect):
-        super().__init__(rect)
-        self.setFlags(QGraphicsItem.ItemIsMovable | QGraphicsItem.ItemIsSelectable | QGraphicsItem.ItemSendsGeometryChanges)
-        self.setPen(QPen(Qt.green, 2))
-        self.setBrush(QBrush(QColor(0, 255, 0, 40)))
-
-def get_installed_versions():
-    installed_versions = []
-    versions_dir = get_minecraft_directory() / "versions"
-    if os.path.exists(versions_dir):
-        for folder_name in os.listdir(versions_dir):
-            if os.path.isdir(os.path.join(versions_dir, folder_name)) and \
-               os.path.exists(os.path.join(versions_dir, folder_name, f"{folder_name}.json")):
-                installed_versions.append(folder_name)
-
-    return sorted(installed_versions, key=minecraft_version_key, reverse=True)
-
-def get_available_versions(filters, offline=False):
-    versions = []
-    latest_release_id = None
-    try:
-        if offline:
-            raise Exception("Forced offline")
-        mc_versions = minecraft_launcher_lib.utils.get_version_list()
-        serializable_versions = []        
-
-        for v in mc_versions:
-            if v.get('type') == 'release' and latest_release_id is None:
-                latest_release_id = v['id']        
-            if isinstance(v.get('releaseTime'), datetime.datetime):
-                v['releaseTime'] = v['releaseTime'].isoformat()
-            serializable_versions.append(v)            
-            
-        with open(VERSION_FILE, "w") as f:
-            json.dump(serializable_versions, f)
-
-    except Exception as e:
-        print("Offline or error fetching versions:", e)
-        if os.path.exists(VERSION_FILE):
-            try:
-                with open(VERSION_FILE, "r") as f:
-                    mc_versions = json.load(f)                    
-                
-                for v in mc_versions:
-                    if v.get('type') == 'release' and latest_release_id is None:
-                        latest_release_id = v['id']
-            except Exception:
-                return [("Offline: No cached versions", "")], None 
-        else:
-            return [("Offline: No cached versions", "")], None 
-
-    filtered_versions = []
-    version_types = {
-        "release": filters.get("release", True),
-        "snapshot": filters.get("snapshot", False),
-        "old_beta": filters.get("beta", False),
-        "old_alpha": filters.get("alpha", False),
-    }
-
-    for v in mc_versions: 
-        if version_types.get(v.get('type', 'release'), False):
-            label = f"{v.get('type', 'release').capitalize()} - {v['id']}"
-            filtered_versions.append((label, v['id']))
-    
-    return filtered_versions, latest_release_id
-
-def get_mojang_uuid(username):
-    try:
-        url = f"https://api.mojang.com/users/profiles/minecraft/{username}"
-        response = requests.get(url, timeout=5)
-        if response.status_code == 200:
-            return response.json()['id']
-        else:
-            print(f"Error fetching Mojang UUID for {username}: Status code {response.status_code}")
-            return None
-    except requests.exceptions.RequestException as e:
-        print(f"Network error while fetching Mojang UUID: {e}")
-        return None
 
 def find_java_executable(java_dir):
     if not java_dir:
@@ -250,425 +125,6 @@ def find_java_executable(java_dir):
         if os.path.exists(path) and os.access(path, os.X_OK):
             return path
     return None
-
-def get_tmp_dir():
-    tmp = get_appdata_path() / "tmp"
-    tmp.mkdir(parents=True, exist_ok=True)
-    return tmp
-
-class SettingsDialog(QWidget):
-    refreshVersions = Signal()
-
-    def __init__(self, parent=None, tr=None):
-        super().__init__(parent)
-        self.tr = tr if tr else load_language()
-        
-        self.jvm_args_list = load_settings().get("jvm_args", [])
-
-        tabs = QTabWidget()
-
-        general_tab = QWidget()
-        general_layout = QVBoxLayout(general_tab)
-        mc_dir_layout = QHBoxLayout()
-        mc_dir_label = QLabel(self.tr.get("minecraft_directory", "Minecraft Directory:"))
-        self.mc_dir_input = QLineEdit()
-        self.mc_dir_input.setText(str(get_minecraft_directory()))
-        self.mc_dir_browse_btn = QPushButton(self.tr.get("browse", "Browse"))
-        self.mc_dir_browse_btn.clicked.connect(self.browse_mc_dir)
-        mc_dir_layout.addWidget(mc_dir_label)
-        mc_dir_layout.addWidget(self.mc_dir_input)
-        mc_dir_layout.addWidget(self.mc_dir_browse_btn)
-
-        settings = load_settings()
-
-        ram_groupbox = QGroupBox(self.tr.get("ram_allocation", "RAM Allocation"))
-        ram_layout = QVBoxLayout()
-        self.ram_slider = QSlider(Qt.Horizontal)
-        self.ram_slider.setMinimum(512)
-        self.ram_slider.setMaximum(psutil.virtual_memory().total // (1024 * 1024) - 512)
-        self.ram_slider.setSingleStep(512)
-        ram_mb = settings.get("ram_mb", 2048)
-        self.ram_slider.setValue(ram_mb)
-        self.ram_label = QLabel()
-        self.update_ram_label(self.ram_slider.value())
-        self.ram_slider.valueChanged.connect(self.update_ram_label)
-        ram_layout.addWidget(self.ram_label)
-        ram_layout.addWidget(self.ram_slider)
-        ram_groupbox.setLayout(ram_layout)
-
-        java_groupbox = QGroupBox("Java Runtime")
-        java_layout = QVBoxLayout()
-
-        self.java_default_radio = QRadioButton("Use default Java (launcher built-in)")
-        self.java_custom_radio = QRadioButton("Use custom Java path")
-        self.java_default_radio.toggled.connect(self.update_java_ui_state)
-        self.java_custom_radio.toggled.connect(self.update_java_ui_state)
-
-        self.java_path_input = QLineEdit()
-        self.java_path_input.setPlaceholderText("Path to Java folder (contains java.exe)")
-        self.java_path_input.setStyleSheet("""
-            QLineEdit:disabled {
-                background-color: #3a3a3a;
-                color: #777;
-                border: 1px solid #555;
-            }
-        """)
-        self.java_browse_btn = QPushButton(self.tr.get("browse", "Browse"))
-        self.java_browse_btn.setStyleSheet("""
-            QPushButton:disabled {
-                background-color: #444;
-                color: #777;
-                border: 1px solid #555;
-            }
-        """)
-
-
-        java_radio_layout = QHBoxLayout()
-        java_radio_layout.addWidget(self.java_default_radio)
-        java_radio_layout.addWidget(self.java_custom_radio)
-
-        java_path_layout = QHBoxLayout()
-        java_path_layout.addWidget(self.java_path_input)
-        java_path_layout.addWidget(self.java_browse_btn)
-
-        java_layout.addLayout(java_radio_layout)
-        java_layout.addLayout(java_path_layout)
-        java_groupbox.setLayout(java_layout)
-
-        java_mode = settings.get("java_mode", "default")
-        java_path = settings.get("java_path", "")
-
-        if java_mode == "default":
-            self.java_default_radio.setChecked(True)
-        else:
-            self.java_custom_radio.setChecked(True)
-
-        self.update_java_ui_state()
-
-        self.java_path_input.setText(java_path)
-        self.java_browse_btn.clicked.connect(self.browse_java_path)
-
-        jvm_button = QPushButton(self.tr.get("jvm_args_button", "JVM Arguments…"))
-        jvm_button.clicked.connect(self.open_jvm_dialog)
-
-        filter_groupbox = QGroupBox(self.tr.get("filters", "Filter Versions"))
-        filter_layout = QVBoxLayout()
-        self.release_checkbox = QCheckBox(self.tr.get("release", "Release"))
-        self.snapshot_checkbox = QCheckBox(self.tr.get("snapshot", "Snapshot"))
-        self.beta_checkbox = QCheckBox(self.tr.get("beta", "Beta"))
-        self.alpha_checkbox = QCheckBox(self.tr.get("alpha", "Alpha"))
-        self.installed_checkbox = QCheckBox(self.tr.get("installed", "Installed"))
-
-        current_filters = settings.get("filters", {})
-        self.release_checkbox.setChecked(current_filters.get("release", True))
-        self.snapshot_checkbox.setChecked(current_filters.get("snapshot", False))
-        self.beta_checkbox.setChecked(current_filters.get("beta", False))
-        self.alpha_checkbox.setChecked(current_filters.get("alpha", False))
-        self.installed_checkbox.setChecked(current_filters.get("installed", True))
-        
-        filter_layout.addWidget(self.release_checkbox)
-        filter_layout.addWidget(self.snapshot_checkbox)
-        filter_layout.addWidget(self.beta_checkbox)
-        filter_layout.addWidget(self.alpha_checkbox)
-        filter_layout.addWidget(self.installed_checkbox)
-        filter_groupbox.setLayout(filter_layout)
-
-        self.general_pages = QStackedWidget()
-        content_widget = QWidget()
-        content_layout = QVBoxLayout(content_widget)
-
-        self.skip_check_checkbox = QCheckBox(
-            self.tr.get("skip_version_check_checkbox", "Skip version verification (launch instantly)")
-        )
-        self.skip_check_checkbox.setToolTip(
-            self.tr.get("skip_version_check_tooltip", "If enabled, installed versions will launch immediately without re-checking or downloading files.\n"
-            "WARNING: This may cause crashes if game files are missing or corrupted. Use if you know what you are doing.")
-        )
-        self.skip_check_checkbox.setChecked(settings.get("skip_version_check", False))
-
-        content_layout.addLayout(mc_dir_layout)
-        content_layout.addWidget(ram_groupbox)
-        content_layout.addWidget(jvm_button)
-        content_layout.addWidget(filter_groupbox)
-        content_layout.addWidget(java_groupbox)
-        content_layout.addWidget(self.skip_check_checkbox)
-        content_layout.addStretch()
-
-        general_scroll = QScrollArea()
-        general_scroll.setWidgetResizable(True)
-        general_scroll.setFrameShape(QFrame.NoFrame)
-        general_scroll.setWidget(content_widget)
-
-        general_layout.addWidget(general_scroll)
-
-        dev_tab = QWidget()
-        dev_layout = QVBoxLayout(dev_tab)
-
-        lang_layout = QHBoxLayout()
-        lang_label = QLabel(self.tr.get("language", "Language:"))
-        self.lang_combo = QComboBox()
-        available_langs = list_available_languages()
-        self.lang_codes = list(available_langs.keys())
-        for code in self.lang_codes:
-            self.lang_combo.addItem(available_langs[code])
-        lang_layout.addWidget(lang_label)
-        lang_layout.addWidget(self.lang_combo)
-        dev_layout.addLayout(lang_layout)
-        if settings.get("language", "en_us") in self.lang_codes:
-            self.lang_combo.setCurrentIndex(self.lang_codes.index(settings.get("language", "en_us")))
-        else:
-            self.lang_combo.setCurrentIndex(0)
-
-
-        self.dev_console_checkbox = QCheckBox(self.tr.get("dev_console", "Dev Console"))
-        self.dev_console_checkbox.setChecked(settings.get("dev_console", False))
-        dev_layout.addWidget(self.dev_console_checkbox)
-
-        self.hide_on_launch_checkbox = QCheckBox(self.tr.get("hide_launcher", "Don't hide launcher when running Minecraft"))
-        self.hide_on_launch_checkbox.setChecked(not settings.get("hide_on_launch", True))
-        dev_layout.addWidget(self.hide_on_launch_checkbox)
-
-        self.discord_rpc_checkbox = QCheckBox(self.tr.get("discord_rpc", "Show status launcher in Discord"))
-        self.discord_rpc_checkbox.setChecked(settings.get("discord_rpc", True))
-        dev_layout.addWidget(self.discord_rpc_checkbox)
-
-        dev_layout.addStretch()
-        
-        about_tab = QWidget()
-        about_layout = QVBoxLayout()
-        
-        launcher_name_label = QLabel(self.tr.get("launcher_name_label", "MaZult Launcher"))
-        launcher_name_label.setFont(QFont("Segoe UI", 16, QFont.Bold))
-        launcher_name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        about_layout.addWidget(launcher_name_label)
-
-        creator_label = QLabel(self.tr.get("creator", "Creator: LunarMoonDLCT"))
-        creator_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        about_layout.addWidget(creator_label)
-        
-        about_layout.addSpacing(20)
-
-        libraries_title = QLabel(self.tr.get("third_party_libs", "Third-Party Libraries:"))
-        libraries_title.setFont(QFont("Segoe UI", 12, QFont.Bold))
-        about_layout.addWidget(libraries_title)
-        
-        libraries_list = QListWidget()
-        libraries_list.setStyleSheet("background-color: #2D2D2D; border: none;")
-        libraries_list.setFocusPolicy(Qt.NoFocus)
-        libraries_list.addItem("• PySide6 - Qt for Python")
-        libraries_list.addItem("• minecraft-launcher-lib")
-        libraries_list.addItem("• requests")
-        libraries_list.addItem("• psutil")
-        libraries_list.addItem("• packaging")
-        libraries_list.addItem("• pypresence")
-        libraries_list.setMinimumHeight(120)
-        about_layout.addWidget(libraries_list)
-
-        source_code_title = QLabel(self.tr.get("source_code", "Source Code Launcher:"))
-        source_code_title.setFont(QFont("Segoe UI", 12, QFont.Bold))
-        about_layout.addWidget(source_code_title)
-
-        self.source_code_button = QPushButton(self.tr.get("open_github", "Open GitHub Repository"))
-        self.source_code_button.clicked.connect(self.open_github_link)
-        about_layout.addWidget(self.source_code_button)
-
-        about_layout.addStretch()
-        about_tab.setLayout(about_layout)
-
-        tabs.addTab(general_tab, self.tr.get("general_tab", "General"))
-        tabs.addTab(dev_tab, self.tr.get("launcher_settings_tab", "Launcher Setting"))
-        tabs.addTab(about_tab, self.tr.get("about_tab", "About Launcher"))
-
-        self.save_button = QPushButton(self.tr.get("save_settings", "Save Settings"))
-        self.save_button.clicked.connect(self.save_and_return)
-
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-
-        container = QWidget()
-        container_layout = QVBoxLayout(container)
-        container_layout.addWidget(tabs)
-        container_layout.addStretch()
-
-        scroll.setWidget(container)
-
-        main_layout = QVBoxLayout(self)
-        main_layout.addWidget(scroll)
-        main_layout.addWidget(self.save_button)
-
-    def open_jvm_dialog(self):
-        dialog = QDialog(self)
-        dialog.setWindowTitle(self.tr.get("jvm_dialog_title", "Edit JVM Arguments"))
-        dialog.setMinimumWidth(400)
-
-        layout = QVBoxLayout(dialog)
-
-        edit = QPlainTextEdit()
-        edit.setMinimumHeight(200)
-
-        current_args_str = format_jvm_args(self.jvm_args_list)
-        edit.setPlainText(current_args_str)
-
-        layout.addWidget(edit)
-
-        button_box = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
-        layout.addWidget(button_box)
-
-        def save_and_close():
-            text = edit.toPlainText().strip()
-            self.jvm_args_list = shlex.split(text) if text else []
-            dialog.accept()
-
-        button_box.accepted.connect(save_and_close)
-        button_box.rejected.connect(dialog.reject)
-
-        dialog.exec()
-
-    def save_and_return(self):
-        old_settings = load_settings()
-        
-        ram_mb = self.ram_slider.value()
-        
-        mc_dir = self.mc_dir_input.text().strip()
-        if mc_dir:
-            mc_path = Path(mc_dir)
-            if not mc_path.exists():
-                try:
-                    os.makedirs(mc_path)
-                    print(f"Created new Minecraft directory: {mc_path}")
-                except Exception as e:
-                    QMessageBox.critical(self, self.tr.get("create_dir_failed", "Creation Failed"), f"Failed to create directory: {mc_dir}\nError: {e}")
-                    return
-        else:
-            QMessageBox.warning(self, self.tr.get("invalid_path", "Invalid Path"), "Minecraft directory path cannot be empty.")
-            return
-        
-        filters = {
-            "release": self.release_checkbox.isChecked(),
-            "snapshot": self.snapshot_checkbox.isChecked(),
-            "beta": self.beta_checkbox.isChecked(),
-            "alpha": self.alpha_checkbox.isChecked(),
-            "installed": self.installed_checkbox.isChecked(),
-        }
-        
-        dev_console_enabled = self.dev_console_checkbox.isChecked()
-        hide_on_launch = not self.hide_on_launch_checkbox.isChecked()
-        jvm_args = self.jvm_args_list
-        discord_rpc_enabled = self.discord_rpc_checkbox.isChecked()
-        skip_version_check = self.skip_check_checkbox.isChecked()
-
-        if self.java_default_radio.isChecked():
-            java_mode = "default"
-            java_path = ""
-        else:
-            java_mode = "custom"
-            java_path = self.java_path_input.text().strip()
-
-        if len(self.lang_codes) == 0:
-            language = "en_us"
-        else:
-            idx = self.lang_combo.currentIndex()
-            if idx < 0 or idx >= len(self.lang_codes):
-                language = "en_us"
-            else:
-                language = self.lang_codes[idx]
-
-        Launcher_profiles_json(mc_dir)
-
-        save_settings(
-            ram_mb=ram_mb, 
-            mc_dir=mc_dir, 
-            filters=filters, 
-            dev_console=dev_console_enabled, 
-            hide_on_launch=hide_on_launch, 
-            jvm_args=jvm_args,
-            discord_rpc=discord_rpc_enabled,
-            language=language,
-            java_mode=java_mode,
-            java_path=java_path,
-            skip_version_check=skip_version_check
-        )
-        
-        if old_settings.get("language") != language:
-            QMessageBox.information(self, self.tr.get("language_changed_title", "Language Changed"), self.tr.get("language_changed_message", "Please restart the launcher to apply the new language."))
-            QApplication.instance().quit()
-
-        main_window = self.window()
-        if hasattr(main_window, "dev_console"):
-            if dev_console_enabled and main_window.dev_console.isHidden():
-                main_window.dev_console.show()
-            elif not dev_console_enabled and main_window.dev_console.isVisible():
-                main_window.dev_console.hide()
-
-        if hasattr(main_window, "reconnect_rpc") and old_settings.get("discord_rpc") != discord_rpc_enabled:
-            main_window.reconnect_rpc()
-
-        self.refreshVersions.emit()
-        if hasattr(self.window(), 'go_home'):
-            self.window().go_home()
-        
-    def open_github_link(self):
-        webbrowser.open("https://github.com/LunarMoonDLCT/MaZult-Launcher")
-
-    def update_ram_label(self, value):
-        self.ram_label.setText(self.tr.get("ram_allocated", "Allocated RAM: {value} MB").format(value=value))
-
-    def browse_mc_dir(self):
-        dir_path = QFileDialog.getExistingDirectory(self, self.tr.get("select_mc_dir_title", "Select Minecraft Directory"))
-        if dir_path:
-            self.mc_dir_input.setText(dir_path)
-
-    def browse_java_path(self):
-        dir_path = QFileDialog.getExistingDirectory(self, self.tr.get("select_java_folder_title", "Select Java Folder"))
-        if dir_path:
-            self.java_path_input.setText(dir_path)
-
-    def update_java_ui_state(self):
-        use_default = self.java_default_radio.isChecked()
-        self.java_path_input.setEnabled(not use_default)
-        self.java_browse_btn.setEnabled(not use_default)
-
-def Launcher_profiles_json(mc_dir):
-    profile_path = os.path.join(mc_dir, "launcher_profiles.json")
-
-    default_data = {
-        "profiles": {
-            "Mazult": {
-                "created": "2020-01-01T00:00:00.000Z",
-                "icon": "Grass",
-                "lastUsed": "2020-01-01T00:00:00.000Z",
-                "lastVersionId": "latest-release",
-                "name": "latest-release",
-                "type": "release"
-            }
-        },
-        "settings": {
-            "crashAssistance": True,
-            "enableAdvanced": False,
-            "enableAnalytics": False,
-            "enableHistorical": False,
-            "enableReleases": True,
-            "enableSnapshots": False,
-            "keepLauncherOpen": False,
-            "profileSorting": "",
-            "showGameLog": False,
-            "showMenu": False,
-            "soundOn": True
-        },
-        "version": 3,
-        "clientToken": str(uuid.uuid4())
-    }
-
-    if os.path.exists(profile_path):
-        try:
-            with open(profile_path, "r", encoding="utf-8") as f:
-                json.load(f)
-            return
-        except Exception:
-            pass
-
-    with open(profile_path, "w", encoding="utf-8") as f:
-        json.dump(default_data, f, indent=4)
 
 def find_minecraft_java_runtime(mc_dir: Path) -> str | None:
     runtime_dir = mc_dir / "runtime"
@@ -919,37 +375,37 @@ class MaZultLauncher(QWidget):
 
     def update_username_combo(self):
         placeholder_text = self.tr.get("add_new_user_placeholder", "Add new user...")
-        self.username_combo.blockSignals(True)
-        self.username_combo.clear()
+        self.home_page.username_combo.blockSignals(True)
+        self.home_page.username_combo.clear()
         
         accounts = load_accounts()
         self.users = [] 
 
         if not accounts:
-            self.username_combo.addItem(placeholder_text)
-            self.username_combo.model().item(0).setEnabled(False)
-            self.username_combo.setStyleSheet("QComboBox { color: #888; } QComboBox QAbstractItemView { color: #E0E0E0; }")
+            self.home_page.username_combo.addItem(placeholder_text)
+            self.home_page.username_combo.model().item(0).setEnabled(False)
+            self.home_page.username_combo.setStyleSheet("QComboBox { color: #888; } QComboBox QAbstractItemView { color: #E0E0E0; }")
         else:
-            self.username_combo.setStyleSheet("")
+            self.home_page.username_combo.setStyleSheet("")
             for acc in accounts:
                 if acc.get("type") == "microsoft":
                     name = f"(microsoft) {acc.get('name', 'Unknown')}"
                 else:
                     name = f"(offline) {acc.get('name', 'Unknown')}"
-                self.username_combo.addItem(name)
+                self.home_page.username_combo.addItem(name)
                 self.users.append(name) 
             
             settings = load_settings()
             saved_username = settings.get("username")
-            if saved_username and self.username_combo.findText(saved_username) != -1:
-                self.username_combo.setCurrentText(saved_username)
+            if saved_username and self.home_page.username_combo.findText(saved_username) != -1:
+                self.home_page.username_combo.setCurrentText(saved_username)
             elif self.users:
-                self.username_combo.setCurrentIndex(0)
+                self.home_page.username_combo.setCurrentIndex(0)
                 save_settings(username=self.users[0])
 
-        self.username_combo.addItem(self.tr.get("manage_users", "Manage Users..."))
+        self.home_page.username_combo.addItem(self.tr.get("manage_users", "Manage Users..."))
 
-        self.username_combo.blockSignals(False)
+        self.home_page.username_combo.blockSignals(False)
     
     def on_username_changed(self, text):
         placeholder_text = self.tr.get("add_new_user_placeholder", "Add new user...")
@@ -957,12 +413,30 @@ class MaZultLauncher(QWidget):
             dialog = UserManagerDialog(self, tr=self.tr)
             dialog.exec()
             self.update_username_combo()
+            self.home_page.username_combo.setCurrentIndex(0) # Reset to first user after managing
         elif text and text != placeholder_text:
             save_settings(username=text)
 
+    def get_current_game_directory(self) -> Path:
+        selected_data = self.home_page.version_combo.currentData()
+        if isinstance(selected_data, str) and selected_data.startswith("instance-"):
+            instance_name = selected_data.replace("instance-", "")
+            instances = load_instances()
+            instance_info = next((inst for inst in instances if inst['name'] == instance_name), None)
+            if instance_info and 'path' in instance_info:
+                print(f"[DEBUG] Using instance directory: {instance_info['path']}")
+                return Path(instance_info['path'])
+            print(f"[WARN] Instance '{instance_name}' not found or path missing, falling back to global directory.")
+        return get_minecraft_directory()
+
+    def open_user_manager(self):
+        dialog = UserManagerDialog(self, tr=self.tr)
+        dialog.exec()
+        self.update_username_combo()
+
     def on_version_changed(self, index):
-        selected_label = self.version_combo.itemText(index)
-        selected_version_id = self.version_combo.itemData(index)
+        selected_label = self.home_page.version_combo.itemText(index)
+        selected_version_id = self.home_page.version_combo.itemData(index)
 
         if selected_version_id:
             if "Latest Release" in selected_label:
@@ -972,15 +446,20 @@ class MaZultLauncher(QWidget):
 
             if self.rpc:
                 self.update_rpc_menu()
+            
+            self.home_page.update_mods_count()
+            self.home_page.update_worlds_count()
+            self.home_page.update_resource_packs_count()
+            self.home_page.update_shader_packs_count()
 
     def open_minecraft_folder(self):
-        mc_dir = get_minecraft_directory()
+        mc_dir = self.get_current_game_directory()
         path = str(mc_dir)
 
         try:
             if sys.platform.startswith('win32'):
                 os.startfile(path)
-            elif sys.platform.startswith('darwin'):  # macOS
+            elif sys.platform.startswith('darwin'):
                 subprocess.Popen(['open', path])
             elif sys.platform.startswith('linux'):
                 subprocess.Popen(['xdg-open', path])
@@ -989,17 +468,118 @@ class MaZultLauncher(QWidget):
         except Exception as e:
             QMessageBox.critical(self, self.tr.get("error_title", "Error"), self.tr.get("open_folder_error", "Failed to open Minecraft folder:\n{e}").format(e=e))
 
+    def open_mods_folder(self):
+        mc_dir = self.get_current_game_directory()
+        mods_path = mc_dir / "mods"
+        if not mods_path.exists():
+            try:
+                mods_path.mkdir(parents=True)
+            except Exception as e:
+                QMessageBox.critical(self, self.tr.get("create_dir_failed", "Creation Failed"), f"Failed to create mods directory:\nError: {e}")
+                return
+        
+        path = str(mods_path)
+        try:
+            if sys.platform.startswith('win32'):
+                os.startfile(path)
+            elif sys.platform.startswith('darwin'):
+                subprocess.Popen(['open', path])
+            elif sys.platform.startswith('linux'):
+                subprocess.Popen(['xdg-open', path])
+        except Exception as e:
+            QMessageBox.critical(self, self.tr.get("error_title", "Error"), self.tr.get("open_folder_error", "Failed to open Minecraft folder:\n{e}").format(e=e))
+
+    def open_worlds_folder(self):
+        mc_dir = self.get_current_game_directory()
+        worlds_path = mc_dir / "saves"
+        if not worlds_path.exists():
+            try:
+                worlds_path.mkdir(parents=True)
+            except Exception as e:
+                QMessageBox.critical(self, self.tr.get("create_dir_failed", "Creation Failed"), f"Failed to create saves directory:\nError: {e}")
+                return
+        
+        path = str(worlds_path)
+        try:
+            if sys.platform.startswith('win32'):
+                os.startfile(path)
+            elif sys.platform.startswith('darwin'):
+                subprocess.Popen(['open', path])
+            elif sys.platform.startswith('linux'):
+                subprocess.Popen(['xdg-open', path])
+        except Exception as e:
+            QMessageBox.critical(self, self.tr.get("error_title", "Error"), self.tr.get("open_folder_error", "Failed to open Minecraft folder:\n{e}").format(e=e))
+
+    def open_resource_packs_folder(self):
+        mc_dir = self.get_current_game_directory()
+        packs_path = mc_dir / "resourcepacks"
+        if not packs_path.exists():
+            try:
+                packs_path.mkdir(parents=True)
+            except Exception as e:
+                QMessageBox.critical(self, self.tr.get("create_dir_failed", "Creation Failed"), f"Failed to create resourcepacks directory:\nError: {e}")
+                return
+        
+        path = str(packs_path)
+        try:
+            if sys.platform.startswith('win32'):
+                os.startfile(path)
+            elif sys.platform.startswith('darwin'):
+                subprocess.Popen(['open', path])
+            elif sys.platform.startswith('linux'):
+                subprocess.Popen(['xdg-open', path])
+        except Exception as e:
+            QMessageBox.critical(self, self.tr.get("error_title", "Error"), self.tr.get("open_folder_error", "Failed to open resource packs folder:\n{e}").format(e=e))
+
+    def open_shaderpacks_folder(self):
+        mc_dir = self.get_current_game_directory()
+        packs_path = mc_dir / "shaderpacks"
+        if not packs_path.exists():
+            try:
+                packs_path.mkdir(parents=True)
+            except Exception as e:
+                QMessageBox.critical(self, self.tr.get("create_dir_failed", "Creation Failed"), f"Failed to create shaderpacks directory:\nError: {e}")
+                return
+        
+        path = str(packs_path)
+        try:
+            if sys.platform.startswith('win32'):
+                os.startfile(path)
+            elif sys.platform.startswith('darwin'):
+                subprocess.Popen(['open', path])
+            elif sys.platform.startswith('linux'):
+                subprocess.Popen(['xdg-open', path])
+        except Exception as e:
+            QMessageBox.critical(self, self.tr.get("error_title", "Error"), self.tr.get("open_folder_error", "Failed to open shaderpacks folder:\n{e}").format(e=e))
 
     def __init__(self, update_info=None):
         super().__init__()
         self.appdata_dir = get_appdata_path()
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+        self.container = QFrame()
+        self.container.setObjectName("windowFrame")
+        main_layout.addWidget(self.container)
+
+        container_layout = QVBoxLayout(self.container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.setSpacing(0)
+
         self.icon_path = resource_path("icon.ico")
         self.mc_process = None
         self.minecraft_thread = None
         self.download_thread = None
         self.update_info = update_info
-
+        self.users = []
+        self.temp_width = 0
+        self.temp_height = 0
+        self.is_downloading = False
+        self.border_width = 8
+        self._is_resizing = False
+        self._resize_edge = None
         settings = load_settings()
+        self.old_pos = None
         self.lang_code = settings.get("language", "en_us")
         self.tr = load_language(self.lang_code)
 
@@ -1008,195 +588,150 @@ class MaZultLauncher(QWidget):
             self.dev_console.show()
 
         self.rpc = None
-        
         self.setWindowTitle(self.tr.get("launcher_title", "MaZult Launcher"))
         self.setWindowIcon(QIcon(str(self.icon_path)))
-        self.setMinimumSize(900, 520)
+        self.setMinimumSize(1024, 600)
         self.setStyleSheet(self.load_styles())
-        self.page_settings = None
-        main_layout = QHBoxLayout(self)
-        self.setLayout(main_layout)
-        main_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.main_window = MainWindow(self)
+        container_layout.addWidget(self.main_window)
+        self.home_page = HomePage(self)
+        self.settings_page = SettingsPage(self, self.tr)
+        self.modloader_page = ModLoaderPage(self)
+        self.instance_page = InstancePage(self)
+        self.global_progress_widget = self.create_global_progress_widget()
+
+        self.modloader_install_page = None
+
+        self.settings_page.refreshVersions.connect(self.reload_game_directory_dependent_data)
+
+        self.page_home_index = self.main_window.add_page(self.home_page)
+        self.page_settings_index = self.main_window.add_page(self.settings_page)
+        self.page_modloader_index = self.main_window.add_page(self.modloader_page)
+        self.page_instance_index = self.main_window.add_page(self.instance_page)
+        self.main_window.button_group.addButton(self.main_window.sidebar_buttons["home"], self.page_home_index)
+        self.main_window.button_group.addButton(self.main_window.sidebar_buttons["mod_loader"], self.page_modloader_index)
+        self.main_window.button_group.addButton(self.main_window.sidebar_buttons["instance"], self.page_instance_index)
+        self.main_window.button_group.addButton(self.main_window.sidebar_buttons["settings"], self.page_settings_index)
+        self.main_window.sidebar_buttons["home"].clicked.connect(lambda: self.main_window.set_current_page(self.page_home_index))
+        self.main_window.sidebar_buttons["settings"].clicked.connect(self.open_settings_page)
+        self.main_window.sidebar_buttons["mod_loader"].clicked.connect(lambda: self.main_window.set_current_page(self.page_modloader_index))
+        self.main_window.sidebar_buttons["instance"].clicked.connect(lambda: self.main_window.set_current_page(self.page_instance_index))
+
         
-        self.temp_width = 0
-        self.temp_height = 0
-
-        sidebar = QVBoxLayout()
-        sidebar.setAlignment(Qt.AlignmentFlag.AlignTop)
-        sidebar.setSpacing(20)
-        sidebar.setContentsMargins(20, 20, 20, 20)
-        
-        self.username_combo = QComboBox()
-        self.username_combo.currentTextChanged.connect(self.on_username_changed)
-        self.update_username_combo()
-        
-        sidebar.addWidget(self.username_combo)
-
-        self.noname = QPushButton(self.tr.get("home_button", "Launcher"))
-        self.noname.clicked.connect(self.go_home)
-        self.noname.setStyleSheet("text-align: left; padding: 10px; background-color: #353535; border: 1px solid #404040;")
-        sidebar.addWidget(self.noname)
-
-        self.update_button = QPushButton(self.tr.get("update_launcher", "Update Launcher"))
-        self.update_button.clicked.connect(self.on_update_clicked)
-        self.update_button.setVisible(False)
-        self.update_button.setStyleSheet("background-color: #e74c3c; color: white; border: none; font-weight: bold; font-size: 14px; border-radius: 4px;")
-        
-        if self.update_info:
-            self.update_button.setVisible(True)
-        
-        sidebar.addWidget(self.update_button)
-
-        self.settings_button_left = QPushButton(self.tr.get("settings", "Settings"))
-        self.settings_button_left.setFixedSize(160, 40)
-        self.settings_button_left.clicked.connect(self.open_settings_dialog)
-        self.settings_button_left.setStyleSheet("text-align: left; padding: 10px; background-color: #353535; border: 1px solid #404040;")
-        sidebar.addStretch()
-        sidebar.addWidget(self.settings_button_left, alignment=Qt.AlignmentFlag.AlignBottom)
-        
-        
-        sidebar_frame = QFrame()
-        sidebar_frame.setLayout(sidebar)
-        sidebar_frame.setFixedWidth(200)
-        sidebar_frame.setStyleSheet("background-color: #252525; border-right: 1px solid #404040;")
-        main_layout.addWidget(sidebar_frame)
-
-        self.page_home = QWidget()
-        content_layout = QVBoxLayout()
-        self.page_home.setLayout(content_layout)
-        content_layout.setSpacing(20)
-        content_layout.setContentsMargins(20, 20, 20, 20)
-
-        self.page_settings = SettingsDialog(self, self.tr)
-        self.page_settings.refreshVersions.connect(self.load_versions)
-
-        header_layout = QHBoxLayout()
-        title = QLabel("Minecraft")
-        title.setFont(QFont("Segoe UI", 24, QFont.Bold))
-
-        open_folder_button = QPushButton(self.tr.get("open_folder", "📂"))
-        open_folder_button.setFixedSize(30, 30)
-        open_folder_button.setStyleSheet("""
-            QPushButton {
-                border: none;
-                background-color: #2D2D2D;
-                font-size: 16px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #404040;
-            }
-        """)
-        open_folder_button.clicked.connect(self.open_minecraft_folder)
-
-        refresh_button = QPushButton("↻")
-        refresh_button.setFixedSize(30, 30)
-        refresh_button.setStyleSheet("""
-            QPushButton {
-                border: none;
-                background-color: #2D2D2D;
-                font-size: 16px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #404040;
-            }
-        """)
-        refresh_button.clicked.connect(self.load_versions)
-
-        header_layout.addWidget(title)
-        header_layout.addStretch()
-        header_layout.addWidget(open_folder_button)
-        header_layout.addWidget(refresh_button)
-        content_layout.addLayout(header_layout)
-
-        version_label = QLabel(self.tr.get("select_version", "Select Version:"))
-        self.version_combo = QComboBox()
-        self.version_combo.currentIndexChanged.connect(self.on_version_changed)
-        self.load_versions()
-
-        version_row = QHBoxLayout()
-        version_row.addWidget(self.version_combo)
-        version_row.setSpacing(10)
-        self.version_combo.setMinimumHeight(30)
-
-        self.instant_launch_checkbox = QCheckBox(self.tr.get("instant_launch_main_menu", "Instant Launch"))
-        self.instant_launch_checkbox.setChecked(settings.get("skip_version_check", False))
-        self.instant_launch_checkbox.setToolTip(
-            self.tr.get("skip_version_check_tooltip", "Launch instantly without checking files. May crash if broken.")
+        self.home_page.instant_launch_checkbox.stateChanged.connect(
+            lambda state: self.on_instant_launch_changed(state, 'home')
         )
-        self.instant_launch_checkbox.setStyleSheet("""
-            QCheckBox { spacing: 6px; font-size: 12px; color: #ccc; }
-            QCheckBox::indicator { width: 14px; height: 14px; }
-        """)
-        self.instant_launch_checkbox.setCursor(Qt.PointingHandCursor)
-        self.instant_launch_checkbox.stateChanged.connect(
-            lambda state: self.on_instant_launch_changed(bool(state))
-        )
-
-        version_row.addWidget(self.instant_launch_checkbox)
-        version_row.addStretch()
-
-        content_layout.addWidget(version_label)
-        content_layout.addLayout(version_row)
-
-        content_layout.addStretch()
-
-        self.progress_label = QLabel()
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setValue(0)
-        self.progress_bar.setMaximum(100)
-        self.progress_label.hide()
-        self.progress_bar.hide()
-        content_layout.addWidget(self.progress_label)
-        content_layout.addWidget(self.progress_bar)
-
-        self.install_loader_btn = QPushButton(self.tr.get("install_mod_loader_button", "Install Mod Loader"))
-        self.install_loader_btn.clicked.connect(self.open_modloader_dialog)
-        content_layout.addWidget(self.install_loader_btn)
-        
-        self.play_button = QPushButton(self.tr.get("play", "Play"))
-        self.play_button.setObjectName("playButton")
-        self.play_button.setStyleSheet(self.load_styles())
-        self.play_button.clicked.connect(self.on_play_clicked)
-        self.is_downloading = False
-
-        content_layout.addWidget(self.play_button)
-
-        self.stacked_widget = QStackedWidget()
-        self.stacked_widget.addWidget(self.page_home)     # Index 0
-        self.stacked_widget.addWidget(self.page_settings) # Index 1
-
-        main_layout.addWidget(self.stacked_widget)
+        if hasattr(self.settings_page, 'skip_check_checkbox'):
+            self.settings_page.skip_check_checkbox.stateChanged.connect(
+                lambda state: self.on_instant_launch_changed(state, 'settings')
+            )
 
         self.connect_rpc()
+        self.update_username_combo()
+        self.load_versions()
+        self.home_page.instant_launch_checkbox.setChecked(settings.get("skip_version_check", False))
+        self.notification_toast = self.settings_page.notification_toast
 
-    def on_instant_launch_changed(self, state, sync_settings_dialog=True):
+        self.home_page.update_mods_count()
+        self.home_page.update_worlds_count()
+        self.home_page.update_resource_packs_count()
+        self.home_page.update_shader_packs_count()
+
+    def reload_game_directory_dependent_data(self):
+        self.load_versions()
+        self.instance_page.load_instance_list()
+        self.home_page.update_mods_count()
+        self.home_page.update_worlds_count()
+        self.home_page.update_resource_packs_count()
+
+    def create_global_progress_widget(self):
+        progress_widget = QWidget(self.main_window)
+        progress_widget.setFixedHeight(50)
+        progress_widget.setObjectName("progressWidget")
+        progress_widget.setStyleSheet("QWidget#progressWidget { background-color: #0A0D17; border-top: 1px solid rgba(255,255,255,.08); }")
+        progress_layout = QVBoxLayout(progress_widget)
+        progress_layout.setContentsMargins(24, 8, 24, 8)
+        progress_layout.setSpacing(5)
+        self.global_progress_label = QLabel("...")
+        self.global_progress_label.setAlignment(Qt.AlignCenter)
+        self.global_progress_bar = QProgressBar()
+        self.global_progress_bar.setTextVisible(False)
+        self.global_progress_bar.setFixedHeight(5)
+        progress_layout.addWidget(self.global_progress_label)
+        progress_layout.addWidget(self.global_progress_bar)
+        progress_widget.hide()
+        return progress_widget
+
+    def set_global_installing_state(self, installing, status_text=""):
+        self.home_page.play_button.setEnabled(not installing)
+        if self.modloader_install_page:
+            self.modloader_install_page.install_btn.setEnabled(not installing)
+
+        if installing:
+            self.global_progress_label.setText(status_text)
+            self.global_progress_bar.setValue(0)
+            self.global_progress_widget.show()
+            self.global_progress_widget.raise_()
+        else:
+            self.global_progress_widget.hide()
+
+
+    def toggle_maximize_restore(self):
+        if self.isMaximized():
+            self.showNormal()
+        else:
+            self.showMaximized()
+
+    def update_styles(self):
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+    def on_instant_launch_changed(self, state, source_widget_name):
         save_settings(skip_version_check=bool(state))
-        if sync_settings_dialog and self.page_settings:
-            self.page_settings.skip_check_checkbox.setChecked(bool(state))
+        if source_widget_name != 'settings' and hasattr(self, 'settings_page') and self.settings_page:
+            if hasattr(self.settings_page, 'skip_check_checkbox'): self.settings_page.skip_check_checkbox.setChecked(bool(state))
+        if source_widget_name != 'home' and hasattr(self, 'home_page') and self.home_page:
+            self.home_page.instant_launch_checkbox.setChecked(bool(state))
 
     def go_home(self):
-        self.stacked_widget.setCurrentIndex(0)
+        self.main_window.set_current_page(self.page_home_index)
 
-    def open_settings_dialog(self):
-        if self.page_settings:
-            self.page_settings.deleteLater()
-        self.page_settings = SettingsDialog(self, self.tr)
-        self.page_settings.refreshVersions.connect(self.load_versions)
-        self.stacked_widget.insertWidget(1, self.page_settings)
-        self.stacked_widget.setCurrentIndex(1)
+    def go_back(self):
+        current_index = self.main_window.content.currentIndex()
+        if current_index > 0:
+            self.main_window.set_current_page(self.page_home_index)
 
-    def open_modloader_dialog(self):
-        dialog = ModLoaderDialog(self, tr=self.tr)
-        if dialog.exec():
-            self.load_versions()
+    def open_settings_page(self):
+        self.main_window.set_current_page(self.page_settings_index)
+
+    def open_modloader_install_page(self, loader_name):
+        if self.modloader_install_page:
+            self.main_window.content.removeWidget(self.modloader_install_page)
+            self.modloader_install_page.deleteLater()
+        self.modloader_install_page = self.modloader_page.create_install_page(loader_name)
+        new_page_index = self.main_window.add_page(self.modloader_install_page)
+        self.main_window.set_current_page(new_page_index)
+
+    def launch_from_instance_page(self, instance_name):
+        self.go_home()
+
+        instance_data_value = f"instance-{instance_name}"
+        index = self.home_page.version_combo.findData(instance_data_value)
+
+        if index != -1:
+            self.home_page.version_combo.setCurrentIndex(index)
+            QTimer.singleShot(50, self.on_play_clicked)
+        else:
+            QMessageBox.warning(self, self.tr.get("error_title", "Error"), self.tr.get("instance_not_found_error", "Could not find the selected instance in the version list."))
+
+    def restart_app(self):
+        QApplication.quit()
 
     def reconnect_rpc(self):
         if self.rpc:
             try:
                 self.rpc.close()
-                print("Disconnected from Discord RPC.")
             except Exception as e:
                 print(f"Error while closing Discord RPC: {e}")
         self.rpc = None
@@ -1205,14 +740,12 @@ class MaZultLauncher(QWidget):
     def connect_rpc(self):
         settings = load_settings()
         if not settings.get("discord_rpc", True):
-            print("Discord RPC is disabled in settings.")
             self.rpc = None
             return
 
         try:
             self.rpc = Presence(DISCORD_CLIENT_ID)
             self.rpc.connect()
-            print("Connected to Discord RPC.")
             self.update_rpc_menu()
         except InvalidID:
             print("Invalid Client ID for Discord RPC. Please check your settings.")
@@ -1224,7 +757,7 @@ class MaZultLauncher(QWidget):
     def update_rpc_menu(self):
         if self.rpc:
             try:
-                selected_version = self.version_combo.currentText().replace("(Installed) ", "")
+                selected_version = self.home_page.version_combo.currentText().replace("(Installed) ", "")
                 self.rpc.update(
                     details=self.tr.get("rpc_status_menu", "In the menu"),
                     large_image="mzlauncher",
@@ -1234,7 +767,6 @@ class MaZultLauncher(QWidget):
                     start=int(time.time())
                 )
             except PipeClosed:
-                print("Discord pipe closed. Reconnecting...")
                 self.connect_rpc()
 
     def update_rpc_downloading(self, version_id):
@@ -1250,7 +782,6 @@ class MaZultLauncher(QWidget):
                     start=int(time.time())
                 )
             except PipeClosed:
-                print("Discord pipe closed. Reconnecting...")
                 self.connect_rpc()
 
     def update_rpc_game(self, version_id):
@@ -1266,7 +797,6 @@ class MaZultLauncher(QWidget):
                     start=int(time.time())
                 )
             except PipeClosed:
-                print("Discord pipe closed. Reconnecting...")
                 self.connect_rpc()
 
 
@@ -1286,23 +816,21 @@ class MaZultLauncher(QWidget):
             self.minecraft_thread.quit()
             self.minecraft_thread.wait(1000)
             self.minecraft_thread = None
-
-        if self.play_button and not self.play_button.parent() is None:
-            self.play_button.setText(self.tr.get("play", "Play"))
-            self.play_button.setEnabled(True)
-            self.play_button.setStyleSheet(self.load_styles())
+        
+        if self.home_page.play_button and not self.home_page.play_button.parent() is None:
+            self.home_page.play_button.setText(self.tr.get("play", "Play"))
+            self.home_page.play_button.setEnabled(True)
+            self.home_page.play_button.setStyleSheet(self.load_styles())
             self.dev_console.set_kill_button_enabled(False)
-
-            self.settings_button_left.setEnabled(True)
-            self.username_combo.setEnabled(True)
-            self.version_combo.setEnabled(True)
+        
+            self.home_page.username_combo.setEnabled(True)
+            self.home_page.version_combo.setEnabled(True)
 
             self.mc_process = None
             self.minecraft_thread = None
-            settings = load_settings()
+            settings = load_settings() 
             hide_on_launch = settings.get("hide_on_launch", True)
             if hide_on_launch:
-                print("[Launcher] I'm here :)")
                 self.show()
                 if self.temp_width > self.minimumWidth() and self.temp_height > self.minimumHeight():
                     self.resize(self.temp_width, self.temp_height)
@@ -1312,7 +840,7 @@ class MaZultLauncher(QWidget):
         self.dev_console.write(text)
 
     def load_versions(self):
-        self.version_combo.clear()
+        self.home_page.version_combo.clear()
         
         settings = load_settings()
         current_version = settings.get("version_id")
@@ -1325,6 +853,13 @@ class MaZultLauncher(QWidget):
         
         available_versions, latest_release_id = get_available_versions(filters)
         
+        instances = load_instances()
+        instance_map = {f"instance-{inst['name']}": inst for inst in instances}
+
+        # Add instances to the version list
+        for instance_id, instance_data in instance_map.items():
+            self.home_page.version_combo.addItem(f"{instance_data['name']} ({instance_data['version']})", instance_id)
+
         all_versions_data = {}
 
         for label, version_id in available_versions:
@@ -1352,26 +887,26 @@ class MaZultLauncher(QWidget):
 
             if version_id == latest_release_id:
                 if data["is_installed"] and show_installed:
-                    self.version_combo.addItem(f"(Installed) Latest Release ({version_id})", version_id)
+                    self.home_page.version_combo.addItem(f"(Installed) Latest Release ({version_id})", version_id)
                 else:
-                    self.version_combo.addItem(f"Latest Release ({version_id})", version_id)
+                    self.home_page.version_combo.addItem(f"Latest Release ({version_id})", version_id)
 
                 if data["is_installed"] and show_installed:
-                    self.version_combo.addItem(f"(Installed) Release - {version_id}", version_id)
+                    self.home_page.version_combo.addItem(f"(Installed) Release - {version_id}", version_id)
                 else:
-                    self.version_combo.addItem(f"Release - {version_id}", version_id)
+                    self.home_page.version_combo.addItem(f"Release - {version_id}", version_id)
                 continue
 
             if data["is_installed"] and show_installed:
                 display_label = f"(Installed) {display_label}"
             
-            self.version_combo.addItem(display_label, version_id)
+            self.home_page.version_combo.addItem(display_label, version_id)
         
         if current_version:
             matching_indexes = []
-            for i in range(self.version_combo.count()):
-                if self.version_combo.itemData(i) == current_version:
-                    label = self.version_combo.itemText(i)
+            for i in range(self.home_page.version_combo.count()):
+                if self.home_page.version_combo.itemData(i) == current_version:
+                    label = self.home_page.version_combo.itemText(i)
                     matching_indexes.append((i, label))
 
             if matching_indexes:
@@ -1383,19 +918,17 @@ class MaZultLauncher(QWidget):
                 if preferred_index is None:
                     preferred_index = matching_indexes[0][0]
 
-                self.version_combo.setCurrentIndex(preferred_index)
-                print(f"[DEBUG] Selected version restored: {self.version_combo.itemText(preferred_index)}")
+                self.home_page.version_combo.setCurrentIndex(preferred_index)
             else:
-                print(f"[DEBUG] Saved version {current_version} not found, fallback to latest release.")
                 if latest_release_id:
-                    index = self.version_combo.findData(latest_release_id)
+                    index = self.home_page.version_combo.findData(latest_release_id)
                     if index != -1:
-                        self.version_combo.setCurrentIndex(index)
+                        self.home_page.version_combo.setCurrentIndex(index)
         else:
             if latest_release_id:
-                index = self.version_combo.findData(latest_release_id)
+                index = self.home_page.version_combo.findData(latest_release_id)
                 if index != -1:
-                    self.version_combo.setCurrentIndex(index)
+                    self.home_page.version_combo.setCurrentIndex(index)
         
         if self.rpc:
             self.update_rpc_menu()
@@ -1404,23 +937,35 @@ class MaZultLauncher(QWidget):
     def load_styles(self):
         return """
         QWidget {
-            background-color: #202020;
-            color: #E0E0E0;
-            font-family: "Segoe UI Variable", "Segoe UI", sans-serif;
-            font-size: 14px;
+            background-color: #090B14;
+            color: #F5F6FA;
+            font-family: "Segoe UI Variable", sans-serif;
+            font-size: 15px;
         }
         
+        QFrame#windowFrame {
+            background-color: #090B14; /* Keep background color */
+        }
+
+        QWidget#homePage {
+            background-color: #090B14;
+        }
+
         QFrame {
-            background-color: #252525;
-            border-right: 1px solid #404040;
+            background-color: #090B14;
+        }
+
+        QFrame#sidebar {
+            border-right: 1px solid #23283B;
         }
 
         QLineEdit, QComboBox {
-            background-color: #353535;
-            border: 1px solid #404040;
-            border-radius: 4px;
-            padding: 8px;
-            color: #E0E0E0;
+            background-color: #141826;
+            border: 1px solid #23283B;
+            border-radius: 14px;
+            padding: 6px 8px;
+            color: #F5F6FA;
+            font-size: 15px;
         }
         QComboBox::drop-down {
             border: none;
@@ -1428,22 +973,29 @@ class MaZultLauncher(QWidget):
             subcontrol-position: top right;
             width: 20px;
         }
+        QComboBox QAbstractItemView {
+            background-color: #1B2133;
+            border: 1px solid #7C4DFF;
+            selection-background-color: #7C4DFF;
+            color: #F5F6FA;
+            outline: 0px;
+        }
 
 
         QPushButton {
-            background-color: #353535;
-            border: 1px solid #404040;
-            border-radius: 4px;
+            background-color: #141826;
+            border: 1px solid #23283B;
+            border-radius: 14px;
             padding: 8px;
             font-weight: normal;
-            color: #E0E0E0;
+            color: #F5F6FA;
         }
         QPushButton:hover {
-            background-color: #404040;
-            border: 1px solid #5A99E5;
+            background-color: #1B2133;
+            border: 1px solid #915EFF;
         }
         QPushButton:pressed {
-            background-color: #5A99E5;
+            background-color: #915EFF;
             color: #FFFFFF;
         }
         
@@ -1452,12 +1004,13 @@ class MaZultLauncher(QWidget):
             border: none;
             font-weight: bold;
             font-size: 16px;
+            background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #8F52FF, stop:1 #6E38FF);
         }
         QPushButton#playButton:hover {
-            background-color: #6a4692;
+            background-color: #A26BFF;
         }
         QPushButton#playButton:pressed {
-            background-color: #3d2358;
+            background-color: #6E38FF;
         }
         
         QPushButton#playButton:disabled {
@@ -1465,24 +1018,12 @@ class MaZultLauncher(QWidget):
             color: #A0A0A0;
         }
 
-        QPushButton[text="⚙"] {
-            border: none;
-            background-color: #2D2D2D;
-        }
-        QPushButton[text="⚙"]:hover {
-            background-color: #404040;
-        }
-        
-        QPushButton[text="↻"] {
-            border: none;
-            background-color: #2D2D2D;
-        }
-        QPushButton[text="↻"]:hover {
-            background-color: #404040;
-        }
-
         QLabel {
             color: #FFFFFF;
+            background: transparent;
+        }
+        QLabel#titleLabel {
+            font-size: 52px;
         }
         QLabel#footer {
             color: #A0A0A0;
@@ -1490,25 +1031,25 @@ class MaZultLauncher(QWidget):
         }
         
         QListWidget {
-            background-color: #2D2D2D;
-            border: 1px solid #404040;
-            border-radius: 4px;
+            background-color: #141826;
+            border: 1px solid #23283B;
+            border-radius: 18px;
         }
         QListWidget::item {
             padding: 8px;
         }
         QListWidget::item:selected {
-            background-color: #5A99E5;
+            background-color: #7C4DFF;
             color: #FFFFFF;
         }
         QListWidget::item:hover {
-            background-color: #404040;
+            background-color: #1B2133;
         }
         
         QProgressBar {
-            background-color: #2D2D2D;
-            border: 1px solid #404040;
-            border-radius: 5px;
+            background-color: #141826;
+            border: 1px solid #23283B;
+            border-radius: 12px;
             text-align: center;
             color: #E0E0E0;
             height: 12px;
@@ -1537,7 +1078,7 @@ class MaZultLauncher(QWidget):
         }
 
         QTabWidget::pane {
-            border: 1px solid #404040;
+            border: 1px solid #303030;
             border-top: none;
             background-color: #2D2D2D;
             border-bottom-left-radius: 4px;
@@ -1547,7 +1088,7 @@ class MaZultLauncher(QWidget):
         QTabBar::tab {
             background-color: #252525;
             color: #A0A0A0;
-            border: 1px solid #404040;
+            border: 1px solid #303030;
             border-bottom: none;
             padding: 2px 4px;
             border-top-left-radius: 4px;
@@ -1591,35 +1132,31 @@ class MaZultLauncher(QWidget):
             color: #A0A0A0;
         }
         """
+    def set_progress_status(self, text):
+        self.global_progress_label.setText(text)
 
-    def on_set_status(self, text):
-        self.progress_label.setText(text)
+    def set_progress_value(self, value):
+        self.global_progress_bar.setValue(value)
 
-    def on_set_progress(self, value):
-        self.progress_bar.setValue(value)
+    def set_progress_max(self, maximum):
+        self.global_progress_bar.setMaximum(maximum)
 
-    def on_set_max(self, maximum):
-        self.progress_bar.setMaximum(maximum)
-
-    def on_set_file(self, text, current, total, speed):
+    def set_progress_file(self, text, current, total, speed):
         if speed < 1024:
             spd = f"{speed:.1f} B/s"
         elif speed < 1024**2:
             spd = f"{speed/1024:.1f} KB/s"
         else:
             spd = f"{speed/1024**2:.2f} MB/s"
-
-        self.progress_label.setText(
+        
+        self.global_progress_label.setText(
             f"Downloading: {text} "
             f"({current/1024/1024:.2f}/{total/1024/1024:.2f} MB) @ {spd}"
         )
 
     def after_download(self, selected_version_id, options, settings, success=True):
-        print("[DEBUG] after_download triggered")
-
         self.is_downloading = False
-        self.progress_label.hide()
-        self.progress_bar.hide()
+        self.global_progress_widget.hide()
 
         if not success or (self.download_thread and self.download_thread._cancelled):
             print(self.tr.get("download_cancelled_log", "Download process was cancelled."))
@@ -1634,20 +1171,17 @@ class MaZultLauncher(QWidget):
 
     def reset_after_cancel(self):
         self.is_downloading = False
-        self.progress_label.hide() 
-        self.progress_bar.hide()
-        self.play_button.setText(self.tr.get("play", "Play"))
-        self.play_button.setEnabled(True)
-        self.play_button.setStyleSheet(self.load_styles())
-
-        self.settings_button_left.setEnabled(True)
-        self.username_combo.setEnabled(True)
-        self.version_combo.setEnabled(True)
+        self.global_progress_widget.hide()
+        self.home_page.play_button.setText(self.tr.get("play", "Play"))
+        self.home_page.play_button.setEnabled(True)
+        self.home_page.play_button.setStyleSheet(self.load_styles())
+        
+        self.home_page.username_combo.setEnabled(True)
+        self.home_page.version_combo.setEnabled(True)
 
         self.update_rpc_menu()
 
     def on_play_clicked(self):
-        print(self.tr.get("debug_thread_created", "[DEBUG] Thread created"))
         if self.minecraft_thread and self.minecraft_thread.isRunning():
             try:
                 print(self.tr.get("warn_previous_thread_running", "[WARN] Previous Minecraft thread still running, attempting cleanup..."))
@@ -1661,9 +1195,9 @@ class MaZultLauncher(QWidget):
             print(self.tr.get("download_cancelled_by_user", "Download canceled by user."))
             self.download_thread.cancel()
             
-            self.play_button.setEnabled(False)
-            self.play_button.setText(self.tr.get("wait", "Please wait"))
-            self.play_button.setStyleSheet("""
+            self.home_page.play_button.setEnabled(False)
+            self.home_page.play_button.setText(self.tr.get("wait", "Please wait"))
+            self.home_page.play_button.setStyleSheet("""
                 QPushButton#playButton {
                     background-color: #2a1c36;
                     color: white;
@@ -1672,20 +1206,29 @@ class MaZultLauncher(QWidget):
                     font-size: 16px;
                 }
             """)
-            self.progress_label.setText(self.tr.get("cancelling", "Cancelling..."))
-            
+            self.set_progress_status(self.tr.get("cancelling", "Cancelling..."))
+
             return
 
-        username = self.username_combo.currentText()
-        if not self.users or username == self.tr.get("manage_users", "Manage Users...") or username == self.tr.get("add_new_user_placeholder", "Add new user..."):
+        username = self.home_page.username_combo.currentText()
+        if not self.users or username == self.tr.get("manage_users", "Manage Users...") or username == self.tr.get("add_new_user_placeholder", "+ Add new user..."):
             QMessageBox.warning(self, self.tr.get("invalid_user", "Invalid User"), self.tr.get("no_user_selected", "Please add or select a user before playing."))
             return
 
-        selected_version_id = self.version_combo.currentData()
-        if not selected_version_id:
+        selected_data = self.home_page.version_combo.currentData()
+        if not selected_data:
             QMessageBox.warning(self, self.tr.get("no_version_selected", "No Version Selected"), self.tr.get("no_version_selected", "Please select a Minecraft version to play."))
             return
-        
+
+        is_instance = isinstance(selected_data, str) and selected_data.startswith("instance-")
+        if is_instance:
+            instance_name = selected_data.replace("instance-", "")
+            instances = load_instances()
+            instance_info = next((inst for inst in instances if inst['name'] == instance_name), None)
+            selected_version_id = instance_info['version'] if instance_info else None
+        else:
+            selected_version_id = selected_data
+
         minecraft_directory = get_minecraft_directory()
         settings = load_settings()
         skip_check = settings.get("skip_version_check", False)
@@ -1694,47 +1237,42 @@ class MaZultLauncher(QWidget):
         version_json = version_dir / f"{selected_version_id}.json"
 
         if skip_check and version_dir.exists() and version_json.exists():
-            print("[Launch] Skip version verification enabled, preparing to launch instantly...")
-            options = self.prepare_mc_options(True)
+            options = self.prepare_mc_options(is_instance, instance_info if is_instance else None)
             if options:
                 self._start_minecraft_process(selected_version_id, options, load_settings())
             else:
                 self.reset_after_cancel()
             return
 
-        print("[Launch] Debug launch game. Checking game assets.")
-
-        settings = load_settings()
-        options = self.prepare_mc_options(False)
+        options = self.prepare_mc_options(is_instance, instance_info if is_instance else None)
         if not options: return
 
-        self.progress_label.show()
-        self.progress_bar.show()
-        self.progress_label.setText(self.tr.get("preparing_download", "Preparing download..."))
-        self.progress_bar.setValue(0)
+        self.go_home() # Ensure home page is visible
+        self.global_progress_widget.show()
+        self.set_progress_status(self.tr.get("preparing_download", "Preparing download..."))
+        self.set_progress_value(0)
         self.update_rpc_downloading(selected_version_id)
 
         self.is_downloading = True
-        self.play_button.setText(self.tr.get("cancel", "Cancel"))
-        self.play_button.setEnabled(True)
-        self.play_button.setStyleSheet(self.load_styles())
+        self.home_page.play_button.setText(self.tr.get("cancel", "Cancel"))
+        self.home_page.play_button.setEnabled(True)
+        self.home_page.play_button.setStyleSheet(self.load_styles())
         
-        self.settings_button_left.setEnabled(False)
-        self.username_combo.setEnabled(False)
-        self.version_combo.setEnabled(False)
+        self.home_page.username_combo.setEnabled(False)
+        self.home_page.version_combo.setEnabled(False)
 
         self.download_thread = DownloadThread(selected_version_id, minecraft_directory, self.tr)
-        self.download_thread.status_signal.connect(self.on_set_status)
-        self.download_thread.value_signal.connect(self.on_set_progress)
-        self.download_thread.max_signal.connect(self.on_set_max)
-        self.download_thread.progress_signal.connect(self.on_set_file)
+        self.download_thread.status_signal.connect(self.set_progress_status)
+        self.download_thread.value_signal.connect(self.set_progress_value)
+        self.download_thread.max_signal.connect(self.set_progress_max)
+        self.download_thread.progress_signal.connect(self.set_progress_file)
         self.download_thread.finished.connect(self.download_thread.deleteLater)
         self.download_thread.finished_signal.connect(lambda success: self.after_download(selected_version_id, options, settings, success))
         self.download_thread.start()
 
-    def prepare_mc_options(self, is_instant_launch=False):
+    def prepare_mc_options(self, is_instance, instance_info):
         accounts = load_accounts()
-        username = self.username_combo.currentText()
+        username = self.home_page.username_combo.currentText()
 
         target_account = None
         for acc in accounts:
@@ -1775,13 +1313,14 @@ class MaZultLauncher(QWidget):
         options = {
             "jvmArguments": final_jvm_args
         }
-        print(f"[DEBUG] JVM Args: {final_jvm_args}")
+
+        if is_instance:
+            options["gameDirectory"] = instance_info['path']
 
         if target_account.get("type") == "microsoft":
             refresh_token = target_account.get("refresh_token")
             if refresh_token:
                 try:
-                    print("[Auth] Refreshing Microsoft token...")
                     new_account_info = msa.complete_refresh(CLIENT_ID, None, REDIRECT_URI, refresh_token)
                     
                     target_account["name"] = new_account_info["name"]
@@ -1789,7 +1328,6 @@ class MaZultLauncher(QWidget):
                     target_account["token"] = new_account_info["access_token"]
                     target_account["refresh_token"] = new_account_info["refresh_token"]
                     save_accounts(accounts)
-                    print("[Auth] Token refreshed and saved successfully.")
 
                 except Exception as e:
                     print(f"[Auth] Failed to refresh token: {e}")
@@ -1808,7 +1346,7 @@ class MaZultLauncher(QWidget):
             return options
         else: 
             user_uuid = str(uuid.uuid3(uuid.NAMESPACE_URL, "OfflinePlayer:" + clean_username))
-            options.update({ "username": clean_username, "uuid": user_uuid, "token": user_uuid })
+            options.update({ "username": clean_username, "uuid": user_uuid, "token": "" })
             return options
 
     def _start_minecraft_process(self, version_id, options, settings):
@@ -1845,16 +1383,15 @@ class MaZultLauncher(QWidget):
                 get_minecraft_directory(),
                 options
             )
-            print("Launching with command:", " ".join(command))
+            print(f"[Launcher] Running command: {' '.join(command)}")
             self.update_rpc_game(version_id)
 
-            self.play_button.setText(self.tr.get("launching", "Launching..."))
-            self.play_button.setEnabled(False)
-            self.play_button.setStyleSheet(self.load_styles())
+            self.home_page.play_button.setText(self.tr.get("launching", "Launching..."))
+            self.home_page.play_button.setEnabled(False)
+            self.home_page.play_button.setStyleSheet(self.load_styles())
 
             hide_on_launch = settings.get("hide_on_launch", True)
             if hide_on_launch:
-                print("[Launcher] i'm hide :)")
                 self.hide()
                 self.temp_width = self.width()
                 self.temp_height = self.height()

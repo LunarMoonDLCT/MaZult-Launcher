@@ -33,13 +33,13 @@ class UserManagerDialog(QDialog):
         self.edit_btn.clicked.connect(self.edit_user)
         self.delete_btn = QPushButton('-')
         self.delete_btn.clicked.connect(self.delete_user)
-        self.select_btn = QPushButton(self.tr.get('select_button', 'Select'))
-        self.select_btn.clicked.connect(self.select_user)
+        self.done_btn = QPushButton(self.tr.get('done_button', 'Done'))
+        self.done_btn.clicked.connect(self.accept)
         btn_layout.addWidget(self.add_btn)
         btn_layout.addWidget(self.edit_btn)
         btn_layout.addWidget(self.delete_btn)
         btn_layout.addStretch()
-        btn_layout.addWidget(self.select_btn)
+        btn_layout.addWidget(self.done_btn)
         layout.addLayout(btn_layout)
 
     def update_list(self):
@@ -184,12 +184,3 @@ class UserManagerDialog(QDialog):
                 accounts.pop(index)
                 save_accounts(accounts)
             self.update_list()
-
-    def select_user(self):
-        selected = self.user_list.currentItem()
-        if selected:
-            display_text = selected.text()
-            self.parent_window.username_combo.setCurrentText(display_text)
-            self.accept()
-        else:
-            QMessageBox.warning(self, self.tr.get('no_selection_title', 'No Selection'), self.tr.get('select_user_prompt', 'Please select a user.'))
