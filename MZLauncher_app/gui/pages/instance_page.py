@@ -286,6 +286,40 @@ class InstancePage(QWidget):
         self.play_button.clicked.connect(self.play_instance)
 
         self.load_instance_list()
+        
+        self.setStyleSheet("""
+            QListWidget#transparentListWidget {
+                background-color: transparent;
+                border: none;
+                outline: 0;
+            }
+            QListWidget#transparentListWidget::item {
+                background-color: transparent;
+                border: none;
+            }
+            QListWidget#transparentListWidget::item:selected, QListWidget#transparentListWidget::item:hover {
+                background-color: transparent;
+                border: none;
+            }
+            QFrame#instanceItem {
+                background-color: #141826;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 18px;
+            }
+            QFrame#instanceItem:hover {
+                background-color: #1B2133;
+            }
+            QFrame#instanceItemSelected {
+                background-color: #1B2133;
+                border: 1px solid #7C4DFF;
+                border-radius: 18px;
+            }
+            QFrame#iconFrame {
+                background: rgba(124,77,255,.18);
+                border: 1px solid rgba(255,255,255,.08);
+                border-radius: 12px;
+            }
+        """)
 
     def load_instance_list(self):
         self.instance_list.clear()
