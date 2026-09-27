@@ -13,7 +13,7 @@ from packaging.version import Version
 
 LAUNCHER_VERSION = "1.4.10.2026"
 
-GITHUB_API_URL = "https://api.github.com/repos/LunarMoonDLCT/MZassets/releases/latest"
+GITHUB_API_URL = "https://api.github.com/repos/LunarMoonDLCT/MaZult-Launcher/releases/latest"
 
 def get_launcher_root():
     if getattr(sys, 'frozen', False):
