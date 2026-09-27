@@ -16,7 +16,6 @@ SolidCompression=yes
 SetupIconFile=icon.ico
 DisableWelcomePage=no
 
-; Khai báo hiển thị trong Apps & Features / Control Panel
 UninstallDisplayIcon={app}\Launcher.exe
 UninstallDisplayName=MaZult Launcher
 ArchitecturesInstallIn64BitMode=x64
@@ -49,14 +48,14 @@ var
 
 function InitializeUninstall(): Boolean;
 var
-  Form: TSetupForm;
+  Form: CustomForm; // Đã sửa: Sử dụng CustomForm thay vì TSetupForm
   BtnYes, BtnNo: TNewButton;
   ResultCode: Integer;
+  TextNotice: TNewStaticText;
 begin
   DoUninstall := False;
   RemoveData := False;
 
-  ; Đã sửa: CreateCustomForm không truyền tham số (bỏ nil)
   Form := CreateCustomForm;
   try
     Form.Caption := 'Uninstall MaZult Launcher';
@@ -65,15 +64,13 @@ begin
     Form.Position := poScreenCenter;
     Form.BorderStyle := bsDialog;
 
-    with TNewStaticText.Create(Form) do
-    begin
-      Parent := Form;
-      Caption := 'Do you really want to completely remove MaZult Launcher from your system?';
-      Left := ScaleX(20);
-      Top := ScaleY(20);
-      Width := Form.ClientWidth - ScaleX(40);
-      WordWrap := True;
-    end;
+    TextNotice := TNewStaticText.Create(Form);
+    TextNotice.Parent := Form;
+    TextNotice.Caption := 'Do you really want to completely remove MaZult Launcher from your system?';
+    TextNotice.Left := ScaleX(20);
+    TextNotice.Top := ScaleY(20);
+    TextNotice.Width := Form.ClientWidth - ScaleX(40);
+    TextNotice.WordWrap := True;
 
     RemoveDataCheckBox := TNewCheckBox.Create(Form);
     RemoveDataCheckBox.Parent := Form;
