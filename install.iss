@@ -1,24 +1,27 @@
 ; --- MaZult Launcher Inno Setup Script (64-bit only) ---
 [Setup]
 AppName=MaZult Launcher
-AppVersion=1.7.1.2026
+AppVersion=1.8.5.2026
 AppPublisher=LunarMoonDLCT
 AppCopyright=© 2026 LunarMoonDLCT
-DefaultDirName={pf}\MaZult Launcher
+
+; Tự động trỏ đúng Program Files 64-bit
+DefaultDirName={autopf}\MaZult Launcher
 DefaultGroupName=MaZult Launcher
-OutputBaseFilename=MaZultLauncher_Setup
-Compression=lzma
+OutputBaseFilename=MaZultLauncher_Setup_v1.8.5
+OutputDir=dist
+
+Compression=lzma2/ultra64
 SolidCompression=yes
 
 SetupIconFile=icon.ico
-
 DisableWelcomePage=no
 
-UninstallDisplayIcon={app}\MaZult Launcher.exe
+; Khai báo icon và tên hiển thị trong Apps & Features / Control Panel
+UninstallDisplayIcon={app}\MaZultLauncher.exe
 UninstallDisplayName=MaZult Launcher
 ArchitecturesInstallIn64BitMode=x64
 DisableDirPage=no
-
 Uninstallable=yes
 
 [Languages]
@@ -33,16 +36,15 @@ Name: "desktopicon"; Description: "Create a desktop icon"; GroupDescription: "Ad
 Name: "launchafterinstall"; Description: "Launch MaZult Launcher after installation"; GroupDescription: "Final options:"
 
 [Files]
-
-Source: "dist/updater_app_debug/*"; DestDir: "{app}"; Flags: ignoreversion
-Source: "dist/updater_app_debug/lib/*"; DestDir: "{app}\lib"; Flags: recursesubdirs createallsubdirs
+; Copy TOÀN BỘ file và thư mục con từ app_debug vào {app}
+Source: "dist\app_debug\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\MaZult Launcher"; Filename: "{app}\MaZult Launcher.exe"; IconFilename: "{app}\icon.ico"
-Name: "{commondesktop}\MaZult Launcher"; Filename: "{app}\MaZult Launcher.exe"; Tasks: desktopicon; IconFilename: "{app}\icon.ico"
+Name: "{group}\MaZult Launcher"; Filename: "{app}\MaZultLauncher.exe"; IconFilename: "{app}\icon.ico"
+Name: "{commondesktop}\MaZult Launcher"; Filename: "{app}\MaZultLauncher.exe"; Tasks: desktopicon; IconFilename: "{app}\icon.ico"
 
 [Run]
-Filename: "{app}\MaZult Launcher.exe"; Description: "Launch MaZult Launcher"; Flags: nowait postinstall skipifsilent; Tasks: launchafterinstall
+Filename: "{app}\MaZultLauncher.exe"; Description: "Launch MaZult Launcher"; Flags: nowait postinstall skipifsilent; Tasks: launchafterinstall
 
 [Code]
 var
@@ -78,7 +80,7 @@ begin
 
     RemoveDataCheckBox := TNewCheckBox.Create(Form);
     RemoveDataCheckBox.Parent := Form;
-    RemoveDataCheckBox.Caption := 'Also remove user data and configuration files';
+    RemoveDataCheckBox.Caption := 'Also remove user data and configuration files (.mazultlauncher)';
     RemoveDataCheckBox.Left := ScaleX(20);
     RemoveDataCheckBox.Top := ScaleY(70);
     RemoveDataCheckBox.Width := Form.ClientWidth - ScaleX(40);
@@ -116,14 +118,11 @@ begin
   if not DoUninstall then
     exit;
 
-
-
   if RemoveData then
   begin
     DelTree(ExpandConstant('{userappdata}\.mazultlauncher'), True, True, True);
   end;
 
-  RemoveDir(ExpandConstant('{app}'));  
   DelTree(ExpandConstant('{app}'), True, True, True);
 
   MsgBox('MaZult Launcher has been successfully removed.'#13#10#13#10 +
