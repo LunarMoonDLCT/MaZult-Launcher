@@ -16,12 +16,10 @@ SolidCompression=yes
 SetupIconFile=icon.ico
 DisableWelcomePage=no
 
-; Khai báo icon và tên hiển thị trong Apps & Features / Control Panel
+; Khai báo hiển thị trong Apps & Features / Control Panel
 UninstallDisplayIcon={app}\Launcher.exe
 UninstallDisplayName=MaZult Launcher
 ArchitecturesInstallIn64BitMode=x64
-DisableDirPage=no
-Uninstallable=yes
 
 [Languages]
 Name: "en"; MessagesFile: "compiler:Default.isl"
@@ -35,7 +33,6 @@ Name: "desktopicon"; Description: "Create a desktop icon"; GroupDescription: "Ad
 Name: "launchafterinstall"; Description: "Launch MaZult Launcher after installation"; GroupDescription: "Final options:"
 
 [Files]
-; Copy TOÀN BỘ file và thư mục con từ app_debug vào {app}
 Source: "dist\app_debug\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
@@ -59,6 +56,7 @@ begin
   DoUninstall := False;
   RemoveData := False;
 
+  ; Đã sửa: CreateCustomForm không truyền tham số (bỏ nil)
   Form := CreateCustomForm;
   try
     Form.Caption := 'Uninstall MaZult Launcher';
@@ -103,10 +101,10 @@ begin
     begin
       DoUninstall := True;
       RemoveData := RemoveDataCheckBox.Checked;
-      Result := True;  
+      Result := True;
     end
     else
-      Result := False; 
+      Result := False;
   finally
     Form.Free;
   end;
@@ -115,7 +113,7 @@ end;
 procedure DeinitializeUninstall();
 begin
   if not DoUninstall then
-    exit;
+    Exit;
 
   if RemoveData then
   begin
@@ -126,9 +124,4 @@ begin
 
   MsgBox('MaZult Launcher has been successfully removed.'#13#10#13#10 +
          'Thank you for using it, see you again soon!', mbInformation, MB_OK);
-end;
-
-function NeedRestart(): Boolean;
-begin
-  Result := False;
 end;
