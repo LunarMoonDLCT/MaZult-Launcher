@@ -17,13 +17,14 @@ GITHUB_API_URL = "https://api.github.com/repos/LunarMoonDLCT/MaZult-Launcher/rel
 
 def get_launcher_root():
     if getattr(sys, 'frozen', False):
-        exe_dir = Path(sys.executable).resolve().parent
-        # Chỉ lấy parent.parent nếu launcher nằm trong thư mục con (ví dụ: bin/)
-        if (exe_dir.parent / "MaZult Launcher.exe").exists():
-            return exe_dir.parent
-        return exe_dir
+        return Path(sys.executable).resolve().parent
     else:
-        return Path(__file__).resolve().parent.parent.parent
+        project_root = Path(__file__).resolve().parent.parent.parent
+        # Tìm thư mục chứa file exe trong project (ví dụ build/exe.* hoặc bin)
+        for candidate in project_root.rglob("MaZult Launcher.exe"):
+            if candidate.is_file():
+                return candidate.parent
+        return project_root
 
 def is_admin():
     if not sys.platform.startswith("win32"):
@@ -162,6 +163,11 @@ def apply_update(zip_path, temp_dir, splash: 'Splash'):
     with zipfile.ZipFile(zip_path, "r") as z:
         z.extractall(extracted_dir)
 
+    # Nếu file zip chứa 1 thư mục gốc bọc ngoài, trỏ vào thư mục đó
+    sub_items = [p for p in extracted_dir.iterdir() if p.is_dir()]
+    if len(sub_items) == 1 and len(list(extracted_dir.iterdir())) == 1:
+        extracted_dir = sub_items[0]
+
     splash.set_progress(96, splash.tr.get("updater_preparing_install", "Preparing to install..."))
 
     base_dir = get_launcher_root().resolve()
@@ -176,22 +182,31 @@ def apply_update(zip_path, temp_dir, splash: 'Splash'):
 
         bat_script = f"""@echo off
 chcp 65001 >nul
+setlocal enabledelayedexpansion
+
+set "SRC={extracted_dir.resolve()}"
+set "DEST={base_dir.resolve()}"
+set "EXE={main_exe.resolve()}"
 set /a count=0
+
 :wait_proc
-tasklist /fi "pid eq {pid}" 2>nul | find "{pid}" >nul
+tasklist /fi "PID eq {pid}" 2>nul | find "{pid}" >nul
 if not errorlevel 1 (
     set /a count+=1
-    if %count% geq 5 (
+    if !count! geq 15 (
         taskkill /f /pid {pid} >nul 2>&1
     )
-    timeout /t 1 /nobreak >nul
+    ping 127.0.0.1 -n 2 >nul
     goto wait_proc
 )
-timeout /t 1 /nobreak >nul
+ping 127.0.0.1 -n 2 >nul
 
-xcopy "{extracted_dir.resolve()}\\*" "{base_dir}\\" /E /Y /H /R /Q >nul 2>&1
+robocopy "%SRC%" "%DEST%" /E /IS /IT /NP /NFL /NDL /R:3 /W:1 >nul 2>&1
+if errorlevel 8 (
+    xcopy "%SRC%\\*" "%DEST%" /E /I /Y /H /R /Q /C >nul 2>&1
+)
 
-start "" "{main_exe.resolve()}" --Launcher
+start "" "%EXE%" --Launcher
 
 rmdir /s /q "{temp_dir.resolve()}" >nul 2>&1
 (goto) 2>nul & del "%~f0"
@@ -203,23 +218,23 @@ rmdir /s /q "{temp_dir.resolve()}" >nul 2>&1
 
         needs_admin = not is_writable(base_dir) and not is_admin()
 
-        if needs_admin:
-            ctypes.windll.shell32.ShellExecuteW(
-                None,
-                "runas",
-                "cmd.exe",
-                f'/c "{bat_path}"',
-                None,
-                0  # SW_HIDE: 
-            )
-        else:
-            flags = subprocess.CREATE_NO_WINDOW
-            if hasattr(subprocess, "DETACHED_PROCESS"):
-                flags |= subprocess.DETACHED_PROCESS
+        verb = "runas" if needs_admin else "open"
+        res = ctypes.windll.shell32.ShellExecuteW(
+            None,
+            verb,
+            str(bat_path),
+            None,
+            str(bat_path.parent),
+            0  # SW_HIDE: ẩn cửa sổ cmd khi chạy
+        )
+
+        # Fallback nếu ShellExecuteW trả về lỗi (<= 32)
+        if res <= 32:
             subprocess.Popen(
-                ["cmd.exe", "/c", str(bat_path)],
-                creationflags=flags
-            )
+                f'cmd.exe /c "{bat_path}"',
+                shell=True,
+                close_fds=True,
+                creationflags=subprocess.CREATE_NO_WINDOW)
         os._exit(0)
     else:
         for item in base_dir.iterdir():
