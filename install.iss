@@ -5,7 +5,6 @@ AppVersion=1.8.5.2026
 AppPublisher=LunarMoonDLCT
 AppCopyright=© 2026 LunarMoonDLCT
 
-; Tự động trỏ đúng Program Files 64-bit
 DefaultDirName={autopf}\MaZult Launcher
 DefaultGroupName=MaZult Launcher
 OutputBaseFilename=MaZultLauncher_Setup_v1.8.5
@@ -18,7 +17,7 @@ SetupIconFile=icon.ico
 DisableWelcomePage=no
 
 ; Khai báo icon và tên hiển thị trong Apps & Features / Control Panel
-UninstallDisplayIcon={app}\MaZultLauncher.exe
+UninstallDisplayIcon={app}\Launcher.exe
 UninstallDisplayName=MaZult Launcher
 ArchitecturesInstallIn64BitMode=x64
 DisableDirPage=no
@@ -40,11 +39,11 @@ Name: "launchafterinstall"; Description: "Launch MaZult Launcher after installat
 Source: "dist\app_debug\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\MaZult Launcher"; Filename: "{app}\MaZultLauncher.exe"; IconFilename: "{app}\icon.ico"
-Name: "{commondesktop}\MaZult Launcher"; Filename: "{app}\MaZultLauncher.exe"; Tasks: desktopicon; IconFilename: "{app}\icon.ico"
+Name: "{group}\MaZult Launcher"; Filename: "{app}\Launcher.exe"; IconFilename: "{app}\icon.ico"
+Name: "{commondesktop}\MaZult Launcher"; Filename: "{app}\Launcher.exe"; Tasks: desktopicon; IconFilename: "{app}\icon.ico"
 
 [Run]
-Filename: "{app}\MaZultLauncher.exe"; Description: "Launch MaZult Launcher"; Flags: nowait postinstall skipifsilent; Tasks: launchafterinstall
+Filename: "{app}\Launcher.exe"; Description: "Launch MaZult Launcher"; Flags: nowait postinstall skipifsilent; Tasks: launchafterinstall
 
 [Code]
 var
