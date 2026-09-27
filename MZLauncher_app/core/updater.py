@@ -17,7 +17,11 @@ GITHUB_API_URL = "https://api.github.com/repos/LunarMoonDLCT/MaZult-Launcher/rel
 
 def get_launcher_root():
     if getattr(sys, 'frozen', False):
-        return Path(sys.executable).resolve().parent.parent
+        exe_dir = Path(sys.executable).resolve().parent
+        # Chỉ lấy parent.parent nếu launcher nằm trong thư mục con (ví dụ: bin/)
+        if (exe_dir.parent / "MaZult Launcher.exe").exists():
+            return exe_dir.parent
+        return exe_dir
     else:
         return Path(__file__).resolve().parent.parent.parent
 
@@ -172,9 +176,14 @@ def apply_update(zip_path, temp_dir, splash: 'Splash'):
 
         bat_script = f"""@echo off
 chcp 65001 >nul
+set /a count=0
 :wait_proc
 tasklist /fi "pid eq {pid}" 2>nul | find "{pid}" >nul
 if not errorlevel 1 (
+    set /a count+=1
+    if %count% geq 5 (
+        taskkill /f /pid {pid} >nul 2>&1
+    )
     timeout /t 1 /nobreak >nul
     goto wait_proc
 )
@@ -201,7 +210,7 @@ rmdir /s /q "{temp_dir.resolve()}" >nul 2>&1
                 "cmd.exe",
                 f'/c "{bat_path}"',
                 None,
-                0  # SW_HIDE: ẩn cửa sổ cmd khi chạy
+                0  # SW_HIDE: 
             )
         else:
             flags = subprocess.CREATE_NO_WINDOW
@@ -211,7 +220,7 @@ rmdir /s /q "{temp_dir.resolve()}" >nul 2>&1
                 ["cmd.exe", "/c", str(bat_path)],
                 creationflags=flags
             )
-        sys.exit(0)
+        os._exit(0)
     else:
         for item in base_dir.iterdir():
             if item.name in ("bin", "app", "temp_update", "unins000.exe", "unins000.dat"):
