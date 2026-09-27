@@ -33,12 +33,14 @@ jobs:
       - run: |
           python build.py build
 
-      - name: Setup Inno Setup
-        uses: gosugarkaf/setup-inno-setup@v1
-
-      - name: Compile Inno Setup Script
-        run: |
-          iscc install.iss
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: dist/app_debug/**
+      - name: Compile Inno Setup
+        uses: Minionguyjpro/Inno-Setup-Action@v1.2.2
+        with:
+          path: install.iss
 
       - uses: actions/upload-artifact@v4
         with:
