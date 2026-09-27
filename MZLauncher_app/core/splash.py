@@ -15,7 +15,7 @@ from PySide6.QtCore import Qt, QTimer, Signal
 from MZLauncher_app.core.launcher_core import MaZultLauncher, parse_launcher_args
 from MZLauncher_app.core.utils import load_language, get_appdata_path, get_tmp_dir
 from MZLauncher_app.core.updater import (
-    UpdateCheckThread, is_admin, relaunch_as_admin, download_update_with_progress,
+    LAUNCHER_VERSION, UpdateCheckThread, is_admin, relaunch_as_admin, download_update_with_progress,
     apply_update, cleanup_update, get_launcher_root
 )
 
@@ -120,11 +120,8 @@ def start_update_process(splash: Splash):
     try:
         splash.set_progress(5, splash.tr.get("updater_starting", "Starting update..."), indeterminate=False)
 
-        base_dir = get_launcher_root()
-        temp_dir = base_dir / "temp_update"
-
-        zip_path = download_update_with_progress(temp_dir, splash)
-        apply_update(zip_path, splash)
+        zip_path, temp_dir = download_update_with_progress(splash)
+        apply_update(zip_path, temp_dir, splash)
         cleanup_update()
 
         splash.set_progress(100, splash.tr.get("updater_complete", "Update complete. Preparing Launcher"))
@@ -251,7 +248,8 @@ def main():
 
     splash.set_progress(0, tr.get("updater_checking", "Checking for updates..."), indeterminate=True)
 
-    update_thread = UpdateCheckThread(launcher_args["updater_ver"])
+    current_ver = launcher_args.get("updater_ver") if launcher_args.get("updater_ver") not in (None, "0.0.0") else LAUNCHER_VERSION
+    update_thread = UpdateCheckThread(current_ver)
     update_thread.update_available.connect(on_update_available)
     update_thread.up_to_date.connect(on_up_to_date)
     update_thread.error_occurred.connect(on_error)

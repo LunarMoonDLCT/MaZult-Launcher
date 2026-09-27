@@ -1,12 +1,17 @@
 import sys
+import platform
 import os
 import shutil
+import subprocess
+import tempfile
 import zipfile
 import requests
 import ctypes
 from pathlib import Path
 from PySide6.QtCore import QThread, Signal
 from packaging.version import Version
+
+LAUNCHER_VERSION = "1.4.10.2026"
 
 GITHUB_API_URL = "https://api.github.com/repos/LunarMoonDLCT/MZassets/releases/latest"
 
@@ -22,6 +27,15 @@ def is_admin():
     try:
         return ctypes.windll.shell32.IsUserAnAdmin()
     except:
+        return False
+
+def is_writable(path: Path) -> bool:
+    try:
+        test_file = path / f".mzl_write_test_{os.getpid()}"
+        test_file.touch()
+        test_file.unlink()
+        return True
+    except (PermissionError, OSError):
         return False
 
 def relaunch_as_admin(extra_args=None):
@@ -53,7 +67,11 @@ def get_latest_updater_info():
     zip_url = None
 
     if sys.platform.startswith("win32"):
-        os_specific_suffix = "-Win.zip"
+        arch = platform.machine().lower()
+        if arch in ("arm64", "aarch64"):
+            os_specific_suffix = "-Win-a64.zip"
+        else:
+            os_specific_suffix = "-Win-x64.zip"
     else:
         os_specific_suffix = "-Other-OS.zip"
 
@@ -72,9 +90,9 @@ class UpdateCheckThread(QThread):
     up_to_date = Signal()
     error_occurred = Signal(str)
 
-    def __init__(self, current_version):
+    def __init__(self, current_version=None):
         super().__init__()
-        self.current_version = current_version
+        self.current_version = current_version or LAUNCHER_VERSION
 
     def run(self):
         if not self.current_version:
@@ -99,12 +117,11 @@ class UpdateCheckThread(QThread):
             print(f"[UPDATER] Update check/process failed: {e}")
             self.error_occurred.emit(f"Update check failed: {e}")
 
-def download_update_with_progress(dest_dir, splash):
+def download_update_with_progress(splash):
     _, url = get_latest_updater_info()
 
-    base_dir = get_launcher_root()
-    temp_dir = base_dir / "temp_update"
-    temp_dir.mkdir(exist_ok=True)
+    temp_dir = Path(tempfile.mkdtemp(prefix="mzl_update_"))
+    temp_dir.mkdir(parents=True, exist_ok=True)
 
     zip_path = temp_dir / "update.zip"
 
@@ -130,46 +147,94 @@ def download_update_with_progress(dest_dir, splash):
                     splash.tr.get("updater_downloading", "Downloading update... {percent}%").format(percent=percent)
                 )
 
-    return zip_path
+    return zip_path, temp_dir
 
-def apply_update(zip_path, splash: 'Splash'):
-    base_dir = get_launcher_root()
-    temp_dir = base_dir / "temp_update"
+def apply_update(zip_path, temp_dir, splash: 'Splash'):
+    extracted_dir = temp_dir / "extracted"
+    extracted_dir.mkdir(parents=True, exist_ok=True)
 
     splash.set_progress(92, splash.tr.get("updater_extracting", "Extracting files..."))
 
     with zipfile.ZipFile(zip_path, "r") as z:
-        z.extractall(temp_dir)
+        z.extractall(extracted_dir)
 
-    splash.set_progress(94, splash.tr.get("updater_preparing_install", "Preparing to install..."))
+    splash.set_progress(96, splash.tr.get("updater_preparing_install", "Preparing to install..."))
 
-    for item in base_dir.iterdir():
-        if item.name in ("bin", "app", "temp_update","unins000.exe", "unins000.dat"):
-            continue
-        try:
-            if item.is_dir():
-                shutil.rmtree(item)
-            else:
-                item.unlink()
-        except Exception as e:
-            print(f"[UPDATER] Failed to remove {item}: {e}")
+    base_dir = get_launcher_root().resolve()
 
-    splash.set_progress(96, splash.tr.get("updater_installing", "Copying new files..."))
+    if sys.platform.startswith("win32"):
+        main_exe = base_dir / "MaZult Launcher.exe"
+        if not main_exe.exists():
+            main_exe = Path(sys.executable).resolve()
 
-    for item in temp_dir.iterdir():
-        if item.is_file() and item.name.lower() == "update.zip":
-            continue
-        dest = base_dir / item.name
-        if item.is_dir():
-            shutil.copytree(item, dest, dirs_exist_ok=True)
+        pid = os.getpid()
+        bat_path = Path(tempfile.gettempdir()) / f"mzl_updater_{pid}.bat"
+
+        bat_script = f"""@echo off
+chcp 65001 >nul
+:wait_proc
+tasklist /fi "pid eq {pid}" 2>nul | find "{pid}" >nul
+if not errorlevel 1 (
+    timeout /t 1 /nobreak >nul
+    goto wait_proc
+)
+timeout /t 1 /nobreak >nul
+
+xcopy "{extracted_dir.resolve()}\\*" "{base_dir}\\" /E /Y /H /R /Q >nul 2>&1
+
+start "" "{main_exe.resolve()}" --Launcher
+
+rmdir /s /q "{temp_dir.resolve()}" >nul 2>&1
+(goto) 2>nul & del "%~f0"
+"""
+        with open(bat_path, "w", encoding="utf-8") as f:
+            f.write(bat_script)
+
+        splash.set_progress(100, splash.tr.get("updater_installing", "Copying new files..."))
+
+        needs_admin = not is_writable(base_dir) and not is_admin()
+
+        if needs_admin:
+            ctypes.windll.shell32.ShellExecuteW(
+                None,
+                "runas",
+                "cmd.exe",
+                f'/c "{bat_path}"',
+                None,
+                0  # SW_HIDE: ẩn cửa sổ cmd khi chạy
+            )
         else:
-            shutil.copy2(item, dest)
+            flags = subprocess.CREATE_NO_WINDOW
+            if hasattr(subprocess, "DETACHED_PROCESS"):
+                flags |= subprocess.DETACHED_PROCESS
+            subprocess.Popen(
+                ["cmd.exe", "/c", str(bat_path)],
+                creationflags=flags
+            )
+        sys.exit(0)
+    else:
+        for item in base_dir.iterdir():
+            if item.name in ("bin", "app", "temp_update", "unins000.exe", "unins000.dat"):
+                continue
+            try:
+                if item.is_dir():
+                    shutil.rmtree(item)
+                else:
+                    item.unlink()
+            except Exception as e:
+                print(f"[UPDATER] Failed to remove {item}: {e}")
 
-    splash.set_progress(98, splash.tr.get("updater_cleaning", "Cleaning up..."))
+        for item in extracted_dir.iterdir():
+            dest = base_dir / item.name
+            if item.is_dir():
+                shutil.copytree(item, dest, dirs_exist_ok=True)
+            else:
+                shutil.copy2(item, dest)
+
+        try:
+            shutil.rmtree(temp_dir)
+        except Exception:
+            pass
 
 def cleanup_update():
-    temp_dir = get_launcher_root() / "temp_update"
-    try:
-        shutil.rmtree(temp_dir)
-    except Exception as e:
-        print(f"[UPDATER] Cleanup failed: {e}")
+    pass
