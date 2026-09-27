@@ -59,7 +59,7 @@ begin
   DoUninstall := False;
   RemoveData := False;
 
-  Form := CreateCustomForm(nil);
+  Form := CreateCustomForm;
   try
     Form.Caption := 'Uninstall MaZult Launcher';
     Form.ClientWidth := ScaleX(420);
