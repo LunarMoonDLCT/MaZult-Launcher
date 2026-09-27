@@ -8,7 +8,15 @@ on:
 
 jobs:
   app:
-    runs-on: windows-latest
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            artifact_name: app_debug_x64
+          - runner: windows-11-arm64
+            artifact_name: app_debug_a64
 
     steps:
       - uses: actions/checkout@v4
@@ -27,7 +35,5 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: app_debug
+          name: ${{ matrix.artifact_name }}
           path: dist/app_debug/**
-
-          
