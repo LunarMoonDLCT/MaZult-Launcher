@@ -25,24 +25,29 @@ jobs:
         with:
           python-version: "3.11"
 
-      - run: |
+      - name: Install dependencies
+        run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install cx_Freeze
 
-      - run: |
+      - name: Build executable with cx_Freeze
+        run: |
           python build.py build
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload cx_Freeze Build Artifact
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
           path: dist/app_debug/**
+
       - name: Compile Inno Setup
         uses: Minionguyjpro/Inno-Setup-Action@v1.2.2
         with:
           path: install.iss
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload Installer Artifact
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}_installer
-          path: Output/**
+          path: dist/*.exe
