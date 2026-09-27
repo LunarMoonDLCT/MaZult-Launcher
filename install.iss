@@ -48,7 +48,7 @@ var
 
 function InitializeUninstall(): Boolean;
 var
-  Form: CustomForm; // Đã sửa: Sử dụng CustomForm thay vì TSetupForm
+  Form: CustomForm;
   BtnYes, BtnNo: TNewButton;
   ResultCode: Integer;
   TextNotice: TNewStaticText;
