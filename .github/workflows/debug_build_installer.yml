@@ -33,10 +33,12 @@ jobs:
       - run: |
           python build.py build
 
+      - name: Setup Inno Setup
+        uses: gosugarkaf/setup-inno-setup@v1
+
       - name: Compile Inno Setup Script
-        uses: AmmarDab3an/iscc-action@v1
-        with:
-          filepath: install.iss
+        run: |
+          iscc install.iss
 
       - uses: actions/upload-artifact@v4
         with:
