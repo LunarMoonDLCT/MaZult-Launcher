@@ -1,4 +1,4 @@
-name: Debug build + installer
+name: Debug Build + installer
 
 on:
   workflow_dispatch:
@@ -58,16 +58,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: uses/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Install system dependencies (alien)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y alien
-
-      - name: Install Python dependencies
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
