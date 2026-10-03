@@ -1,4 +1,4 @@
-name: Build .exe
+name: Build debug + installer
 
 on:
   workflow_dispatch:
@@ -7,7 +7,7 @@ on:
       - main
 
 jobs:
-  app:
+  build-windows:
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -51,3 +51,29 @@ jobs:
         with:
           name: ${{ matrix.artifact_name }}_installer
           path: dist/*.exe
+
+  build-linux:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install cx_Freeze
+
+      - name: Build .deb package with cx_Freeze
+        run: |
+          python build.py bdist_deb
+
+      - name: Upload Linux .deb Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app_debug_linux_deb
+          path: dist/*.deb
