@@ -268,7 +268,7 @@ class CrashCheckDialog(QDialog):
                 try:
                     os.startfile(crash_report_path)
                 except Exception as e:
-                    QMessageBox.warning(self, "ERROR When open log", f"Cannot open log file:\n{e}")
+                    QMessageBox.warning(self, self.tr.get("open_log_error_title", "ERROR When open log"), self.tr.get("open_log_error_msg", "Cannot open log file:\n{e}").format(e=e))
             open_btn.clicked.connect(open_report)
             btn_layout.addWidget(open_btn)
 
@@ -1149,9 +1149,17 @@ class MaZultLauncher(QWidget):
         else:
             spd = f"{speed/1024**2:.2f} MB/s"
         
+        template = self.tr.get(
+            "download_progress_format",
+            "Downloading: {text} ({current:.2f}/{total:.2f} MB) @ {speed}"
+        )
         self.global_progress_label.setText(
-            f"Downloading: {text} "
-            f"({current/1024/1024:.2f}/{total/1024/1024:.2f} MB) @ {spd}"
+            template.format(
+                text=text,
+                current=current / 1024 / 1024,
+                total=total / 1024 / 1024,
+                speed=spd
+            )
         )
 
     def after_download(self, selected_version_id, options, settings, success=True):

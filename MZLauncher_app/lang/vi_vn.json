@@ -43,6 +43,7 @@
   "invalid_user": "Người dùng không hợp lệ",
   "create_dir_failed": "Không thể tạo thư mục",
   "update_available": "Có bản cập nhật mới",
+  "update_manual_linux": "Đã có phiên bản mới ({version}).\nVui lòng tải và cài đặt từ GitHub Releases.",
   "crash_detected": "Phát hiện sự cố",
   "crash_info": "Ôi không, có vẻ như Minecraft đã gặp sự cố.",
   "ok": "Đồng ý",
@@ -179,5 +180,17 @@
   "shader_packs_title": "Gói Shader",
   "shader_packs_subtitle": "Cài đặt và quản lý các gói shader của bạn.",
   "prioritize_gpu_checkbox": "Ưu tiên GPU rời (chỉ dành cho Windows)",
-  "prioritize_gpu_tooltip": "Khi được bật, launcher sẽ cố gắng yêu cầu Windows sử dụng card đồ họa hiệu suất cao cho game.\nCó thể yêu cầu quyền quản trị viên."
+  "prioritize_gpu_tooltip": "Khi được bật, launcher sẽ cố gắng yêu cầu Windows sử dụng card đồ họa hiệu suất cao cho game.\nCó thể yêu cầu quyền quản trị viên.",
+  "preparing_download": "Đang chuẩn bị tải xuống...",
+  "download_cancelled_log": "Quá trình tải xuống đã bị hủy.",
+  "download_cancelled_by_user": "Tải xuống đã bị hủy bởi người dùng.",
+  "warn_previous_thread_running": "[CẢNH BÁO] Tiến trình Minecraft trước đó vẫn đang chạy, đang dọn dẹp...",
+  "error_cleanup_old_thread": "[LỖI] Không thể dọn dẹp tiến trình cũ:",
+  "login_expired_title": "Đăng nhập hết hạn",
+  "login_expired_message": "Phiên đăng nhập Microsoft đã hết hạn. Vui lòng đăng nhập lại.",
+  "updater_complete": "Cập nhật hoàn tất. Đang chuẩn bị Launcher...",
+  "critical_error": "Launcher gặp sự cố nghiêm trọng và sẽ đóng.",
+  "open_log_error_title": "Lỗi mở nhật ký",
+  "open_log_error_msg": "Không thể mở tệp nhật ký:\n{e}",
+  "download_progress_format": "Đang tải: {text} ({current:.2f}/{total:.2f} MB) @ {speed}"
 }

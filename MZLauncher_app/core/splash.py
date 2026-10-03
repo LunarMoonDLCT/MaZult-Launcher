@@ -4,10 +4,11 @@ import shutil
 import time
 import traceback
 import subprocess
+import webbrowser
 from pathlib import Path
 
 from PySide6.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QLabel, QProgressBar, QMessageBox
+    QApplication, QWidget, QVBoxLayout, QLabel, QProgressBar, QMessageBox, QPushButton
 )
 from PySide6.QtGui import QFont, QPainter, QColor
 from PySide6.QtCore import Qt, QTimer, Signal
@@ -116,6 +117,53 @@ class Splash(QWidget):
         self.main_layout.addWidget(error_title)
         self.main_layout.addWidget(QLabel(message))
 
+    def show_update_prompt(self, title, message, btn_text, url):
+        while self.main_layout.count():
+            item = self.main_layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+
+        title_label = QLabel(title)
+        title_label.setFont(QFont("Segoe UI", 13, QFont.Bold))
+        title_label.setAlignment(Qt.AlignCenter)
+        title_label.setStyleSheet("color: white;")
+
+        msg_label = QLabel(message)
+        msg_label.setFont(QFont("Segoe UI", 10))
+        msg_label.setAlignment(Qt.AlignCenter)
+        msg_label.setWordWrap(True)
+        msg_label.setStyleSheet("color: #BBBBBB;")
+
+        update_btn = QPushButton(btn_text)
+        update_btn.setFont(QFont("Segoe UI", 10, QFont.Bold))
+        update_btn.setFixedHeight(32)
+        update_btn.setCursor(Qt.PointingHandCursor)
+        update_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #6a5acd;
+                color: white;
+                border-radius: 9px;
+                padding: 4px 16px;
+            }
+            QPushButton:hover {
+                background-color: #7b68ee;
+            }
+        """)
+
+        def open_release():
+            webbrowser.open(url)
+            sys.exit(0)
+
+        update_btn.clicked.connect(open_release)
+
+        self.main_layout.addStretch()
+        self.main_layout.addWidget(title_label)
+        self.main_layout.addWidget(msg_label)
+        self.main_layout.addSpacing(6)
+        self.main_layout.addWidget(update_btn, alignment=Qt.AlignCenter)
+        self.main_layout.addStretch()
+
 def start_update_process(splash: Splash):
     try:
         splash.set_progress(5, splash.tr.get("updater_starting", "Starting update..."), indeterminate=False)
@@ -210,6 +258,13 @@ def main():
     splash.finished.connect(open_main_window)
 
     def on_update_available(version, url):
+        if not is_windows:
+            title = tr.get("update_available", "Update Available")
+            msg = tr.get("update_manual_linux", "A new version ({version}) is available.\nPlease update via GitHub Releases.").format(version=version)
+            btn_txt = tr.get("update_launcher", "Update")
+            splash.show_update_prompt(title, msg, btn_txt, url)
+            return
+
         if is_windows and not is_admin():
             print("[UPDATER] Requesting administrator privileges...")
             splash.set_progress(0, tr.get("updater_waiting_permission", "Please allow administrator permission to update..."), indeterminate=True)

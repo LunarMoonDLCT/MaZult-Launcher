@@ -20,7 +20,6 @@ def get_launcher_root():
         return Path(sys.executable).resolve().parent
     else:
         project_root = Path(__file__).resolve().parent.parent.parent
-        # Tìm thư mục chứa file exe trong project (ví dụ build/exe.* hoặc bin)
         for candidate in project_root.rglob("MaZult Launcher.exe"):
             if candidate.is_file():
                 return candidate.parent
@@ -69,16 +68,17 @@ def get_latest_updater_info():
     data = r.json()
 
     latest_ver = data["tag_name"].lstrip("v")
-    zip_url = None
+    release_html_url = data.get("html_url", f"https://github.com/LunarMoonDLCT/MaZult-Launcher/releases/tag/{data.get('tag_name', '')}")
 
-    if sys.platform.startswith("win32"):
-        arch = platform.machine().lower()
-        if arch in ("arm64", "aarch64"):
-            os_specific_suffix = "-Win-a64.zip"
-        else:
-            os_specific_suffix = "-Win-x64.zip"
+    if not sys.platform.startswith("win32"):
+        return latest_ver, release_html_url
+
+    zip_url = None
+    arch = platform.machine().lower()
+    if arch in ("arm64", "aarch64"):
+        os_specific_suffix = "-Win-a64.zip"
     else:
-        os_specific_suffix = "-Other-OS.zip"
+        os_specific_suffix = "-Win-x64.zip"
 
     for asset in data.get("assets", []):
         if asset.get("name", "").endswith(os_specific_suffix):
