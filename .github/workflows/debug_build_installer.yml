@@ -1,4 +1,4 @@
-name: Debug Build + installer
+name: Debug build + installer
 
 on:
   workflow_dispatch:
@@ -68,9 +68,45 @@ jobs:
           pip install -r requirements.txt
           pip install cx_Freeze
 
-      - name: Build .deb package with cx_Freeze
+      - name: Build executable with cx_Freeze
         run: |
-          python build.py bdist_deb
+          python build.py build
+
+      - name: Package into .deb using dpkg-deb
+        run: |
+          # 1. Tạo cấu trúc thư mục tiêu chuẩn cho .deb
+          mkdir -p deb_dist/opt/mazult-launcher
+          mkdir -p deb_dist/DEBIAN
+          mkdir -p deb_dist/usr/share/applications
+
+          # 2. Sao chép ứng dụng đã build vào /opt/mazult-launcher
+          cp -r dist/app_debug/* deb_dist/opt/mazult-launcher/
+
+          # 3. Tạo file cấu hình DEBIAN/control
+          cat << 'EOF' > deb_dist/DEBIAN/control
+          Package: mazult-launcher
+          Version: 1.8.5.2026
+          Section: utils
+          Priority: optional
+          Architecture: amd64
+          Maintainer: LunarMoonDLCT
+          Description: MaZult Launcher
+          EOF
+
+          # 4. Tạo file .desktop để tích hợp Menu ứng dụng trên Linux
+          cat << 'EOF' > deb_dist/usr/share/applications/mazult-launcher.desktop
+          [Desktop Entry]
+          Name=MaZult Launcher
+          Exec=/opt/mazult-launcher/Launcher
+          Icon=/opt/mazult-launcher/icon.ico
+          Type=Application
+          Categories=Game;
+          EOF
+
+          # 5. Cấp quyền và đóng gói thành .deb
+          chmod -R 755 deb_dist/DEBIAN
+          chmod -R 755 deb_dist/opt/mazult-launcher
+          dpkg-deb --build deb_dist dist/MaZult-Launcher-1.8.5.2026-amd64.deb
 
       - name: Upload Linux .deb Artifact
         uses: actions/upload-artifact@v4
