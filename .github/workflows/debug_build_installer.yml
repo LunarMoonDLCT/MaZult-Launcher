@@ -15,8 +15,6 @@ jobs:
         include:
           - runner: windows-latest
             artifact_name: app_debug_x64
-          - runner: windows-11-arm64
-            artifact_name: app_debug_a64
 
     steps:
       - uses: actions/checkout@v4
@@ -24,6 +22,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
+      - name: Read VERSION file
+        id: get_version
+        shell: bash
+        run: |
+          VERSION=$(cat VERSION | xargs)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Install dependencies
         run: |
@@ -38,7 +43,7 @@ jobs:
       - name: Upload cx_Freeze Build Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact_name }}
+          name: ${{ matrix.artifact_name }}_v${{ steps.get_version.outputs.version }}
           path: dist/app_debug/**
 
       - name: Compile Inno Setup
@@ -49,7 +54,7 @@ jobs:
       - name: Upload Installer Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact_name }}_installer
+          name: ${{ matrix.artifact_name }}_installer_v${{ steps.get_version.outputs.version }}
           path: dist/*.exe
 
   build-linux:
@@ -61,6 +66,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
+      - name: Read VERSION file
+        id: get_version
+        run: |
+          VERSION=$(cat VERSION | xargs)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Install dependencies
         run: |
@@ -74,18 +85,17 @@ jobs:
 
       - name: Package into .deb using dpkg-deb
         run: |
-          # 1. Tạo cấu trúc thư mục tiêu chuẩn cho .deb
+          APP_VERSION="${{ steps.get_version.outputs.version }}"
+
           mkdir -p deb_dist/opt/mazult-launcher
           mkdir -p deb_dist/DEBIAN
           mkdir -p deb_dist/usr/share/applications
 
-          # 2. Sao chép ứng dụng đã build vào /opt/mazult-launcher
           cp -r dist/app_debug/* deb_dist/opt/mazult-launcher/
 
-          # 3. Tạo file cấu hình DEBIAN/control
-          cat << 'EOF' > deb_dist/DEBIAN/control
+          cat << EOF > deb_dist/DEBIAN/control
           Package: mazult-launcher
-          Version: 1.8.5.2026
+          Version: ${APP_VERSION}
           Section: utils
           Priority: optional
           Architecture: amd64
@@ -93,7 +103,6 @@ jobs:
           Description: MaZult Launcher
           EOF
 
-          # 4. Tạo file .desktop để tích hợp Menu ứng dụng trên Linux
           cat << 'EOF' > deb_dist/usr/share/applications/mazult-launcher.desktop
           [Desktop Entry]
           Name=MaZult Launcher
@@ -103,13 +112,12 @@ jobs:
           Categories=Game;
           EOF
 
-          # 5. Cấp quyền và đóng gói thành .deb
           chmod -R 755 deb_dist/DEBIAN
           chmod -R 755 deb_dist/opt/mazult-launcher
-          dpkg-deb --build deb_dist dist/MaZult-Launcher-1.8.5.2026-amd64.deb
+          dpkg-deb --build deb_dist "dist/MaZult-Launcher-${APP_VERSION}-amd64.deb"
 
       - name: Upload Linux .deb Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app_debug_linux_deb
+          name: app_debug_linux_deb_v${{ steps.get_version.outputs.version }}
           path: dist/*.deb
